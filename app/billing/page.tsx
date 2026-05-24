@@ -1,0 +1,1 @@
+export default function BillingPage() { return <div className='fade-in'><h1 className='text-xl font-semibold text-[var(--text)]'>Billing</h1><p className='text-sm text-[var(--text-2)] mt-2'>Stripe integration — manage plans here.</p></div> }
