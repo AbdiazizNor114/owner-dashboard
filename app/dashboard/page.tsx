@@ -6,18 +6,22 @@ import { companiesApi, Company } from '@/lib/api'
 import { StatCard } from '@/components/StatCard'
 import { EmptyState } from '@/components/EmptyState'
 import { SkeletonCard, SkeletonRow } from '@/components/Skeleton'
+import { Building2, CheckCircle2, Gem, UsersRound } from 'lucide-react'
 
 const PLAN_COLOR: Record<string, string> = {
-  free:       'text-[var(--text-3)] bg-[var(--muted)]',
-  starter:    'text-[var(--blue)] bg-[#4f8ef718]',
-  pro:        'text-[var(--green)] bg-[var(--green-glow)]',
+  free: 'text-[var(--text-3)] bg-[var(--muted)]',
+  starter: 'text-[var(--blue)] bg-[#4f8ef718]',
+  pro: 'text-[var(--green)] bg-[var(--green-glow)]',
   enterprise: 'text-[var(--amber)] bg-[#d98f2e18]',
 }
 
 const STATUS_COLOR: Record<string, string> = {
-  active:    'text-[var(--green)]',
+  active: 'text-[var(--green)]',
   suspended: 'text-[var(--red)]',
-  trial:     'text-[var(--amber)]',
+  trial: 'text-[var(--amber)]',
+  past_due: 'text-[var(--amber)]',
+  restricted: 'text-[var(--red)]',
+  cancelled: 'text-[var(--text-3)]',
 }
 
 export default function OwnerDashboard() {
@@ -26,7 +30,6 @@ export default function OwnerDashboard() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    // Check if user is authenticated
     const token = localStorage.getItem('shaqonet_token')
     if (!token) {
       router.push('/login')
@@ -34,10 +37,7 @@ export default function OwnerDashboard() {
     }
 
     companiesApi.list()
-      .then(data => {
-        console.log('Companies data:', data)
-        setCompanies(data)
-      })
+      .then(setCompanies)
       .catch((err) => {
         console.error('Error loading companies:', err)
         setCompanies([])
@@ -45,28 +45,27 @@ export default function OwnerDashboard() {
       .finally(() => setLoading(false))
   }, [router])
 
-  const active   = companies.filter(c => c.status === 'active').length
-  const trial    = companies.filter(c => c.status === 'trial').length
-  const proPlus  = companies.filter(c => c.plan === 'pro' || c.plan === 'enterprise').length
+  const active = companies.filter(c => c.status === 'active').length
+  const trial = companies.filter(c => c.status === 'trial').length
+  const proPlus = companies.filter(c => c.plan === 'pro' || c.plan === 'enterprise').length
   const totalEmp = companies.reduce((s, c) => s + (c.employeeCount ?? 0), 0)
 
   return (
     <div className="fade-in">
-      <div className="flex items-center justify-between mb-8">
+      <div className="mb-8 flex items-center justify-between">
         <div>
           <h1 className="text-xl font-semibold text-[var(--text)]">Overview</h1>
-          <p className="text-sm text-[var(--text-2)] mt-0.5">All companies on the platform</p>
+          <p className="mt-0.5 text-sm text-[var(--text-2)]">All companies on the platform</p>
         </div>
         <Link
           href="/companies?new=1"
-          className="px-4 py-2 bg-[var(--green)] hover:bg-[var(--green-dim)] text-white text-sm font-semibold rounded-lg transition-colors"
+          className="rounded-lg bg-[var(--green)] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[var(--green-dim)]"
         >
           + Add company
         </Link>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-4 gap-4 mb-8">
+      <div className="mb-8 grid grid-cols-4 gap-4">
         {loading ? (
           <>
             <SkeletonCard />
@@ -76,25 +75,26 @@ export default function OwnerDashboard() {
           </>
         ) : (
           <>
-            <StatCard label="Total companies" value={companies.length} sub="on platform" icon="🏢" />
-            <StatCard label="Active" value={active} sub={`${trial} in trial`} icon="✅" color="text-[var(--green)]" />
-            <StatCard label="Pro / Enterprise" value={proPlus} sub="paying customers" icon="💎" color="text-[var(--amber)]" />
-            <StatCard label="Total employees" value={totalEmp} sub="across all companies" icon="👥" color="text-[var(--blue)]" />
+            <StatCard label="Total companies" value={companies.length} sub="on platform" icon={<Building2 className="h-4 w-4" />} />
+            <StatCard label="Active" value={active} sub={`${trial} in trial`} icon={<CheckCircle2 className="h-4 w-4" />} color="text-[var(--green)]" />
+            <StatCard label="Pro / Enterprise" value={proPlus} sub="paying customers" icon={<Gem className="h-4 w-4" />} color="text-[var(--amber)]" />
+            <StatCard label="Total employees" value={totalEmp} sub="across all companies" icon={<UsersRound className="h-4 w-4" />} color="text-[var(--blue)]" />
           </>
         )}
       </div>
 
-      {/* Companies table */}
-      <div className="bg-[var(--card)] border border-[var(--border)] rounded-xl overflow-hidden">
-        <div className="px-5 py-4 border-b border-[var(--border)] flex items-center justify-between">
+      <div className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--card)]">
+        <div className="flex items-center justify-between border-b border-[var(--border)] px-5 py-4">
           <h2 className="text-sm font-semibold text-[var(--text)]">All companies</h2>
-          <Link href="/companies" className="text-xs text-[var(--green)] hover:underline">Manage all →</Link>
+          <Link href="/companies" className="text-xs text-[var(--green)] hover:underline">Manage all</Link>
         </div>
 
         {loading ? (
           <>
-            <div className="grid px-5 py-2.5 text-xs font-medium text-[var(--text-3)] uppercase tracking-wider"
-                 style={{ gridTemplateColumns: '1fr 100px 90px 80px 90px 60px' }}>
+            <div
+              className="grid px-5 py-2.5 text-xs font-medium uppercase tracking-wider text-[var(--text-3)]"
+              style={{ gridTemplateColumns: '1fr 100px 90px 80px 90px 60px' }}
+            >
               <div>Company</div><div>Plan</div><div>Status</div><div>Employees</div><div>Created</div><div></div>
             </div>
             <SkeletonRow />
@@ -103,37 +103,38 @@ export default function OwnerDashboard() {
           </>
         ) : companies.length === 0 ? (
           <EmptyState
-            icon="🏢"
+            icon={<Building2 className="h-6 w-6" />}
             title="No companies yet"
             description="Get started by adding your first company to the platform"
             action={{ label: 'Add company', href: '/companies?new=1' }}
           />
         ) : (
           <div className="divide-y divide-[var(--border)]">
-            {/* header */}
-            <div className="grid px-5 py-2.5 text-xs font-medium text-[var(--text-3)] uppercase tracking-wider"
-                 style={{ gridTemplateColumns: '1fr 100px 90px 80px 90px 60px' }}>
+            <div
+              className="grid px-5 py-2.5 text-xs font-medium uppercase tracking-wider text-[var(--text-3)]"
+              style={{ gridTemplateColumns: '1fr 100px 90px 80px 90px 60px' }}
+            >
               <div>Company</div><div>Plan</div><div>Status</div><div>Employees</div><div>Created</div><div></div>
             </div>
 
             {companies.map(c => (
               <div
                 key={c.id}
-                className="grid items-center px-5 py-3.5 hover:bg-[var(--surface)] transition-colors"
+                className="grid items-center px-5 py-3.5 transition-colors hover:bg-[var(--surface)]"
                 style={{ gridTemplateColumns: '1fr 100px 90px 80px 90px 60px' }}
               >
                 <div>
                   <p className="text-sm font-medium text-[var(--text)]">{c.name}</p>
-                  <p className="text-xs text-[var(--text-3)] mono">{c.slug}</p>
+                  <p className="mono text-xs text-[var(--text-3)]">{c.slug || c.industry || c.id}</p>
                 </div>
                 <div>
-                  <span className={`text-xs font-semibold px-2 py-0.5 rounded-full capitalize ${PLAN_COLOR[c.plan]}`}>
-                    {c.plan}
+                  <span className={`rounded-full px-2 py-0.5 text-xs font-semibold capitalize ${PLAN_COLOR[c.plan || 'free']}`}>
+                    {c.plan || 'free'}
                   </span>
                 </div>
                 <div>
                   <span className={`text-xs font-medium capitalize ${STATUS_COLOR[c.status]}`}>
-                    ● {c.status}
+                    <span className="mr-1">●</span>{c.status}
                   </span>
                 </div>
                 <div className="text-sm text-[var(--text-2)]">{c.employeeCount ?? 0}</div>
@@ -141,8 +142,8 @@ export default function OwnerDashboard() {
                   {new Date(c.createdAt).toLocaleDateString()}
                 </div>
                 <div className="flex justify-end">
-                  <Link href={`/companies/${c.id}`} className="text-xs text-[var(--green)] hover:underline">
-                    Open →
+                  <Link href={`/companies?open=${c.id}`} className="text-xs text-[var(--green)] hover:underline">
+                    Open
                   </Link>
                 </div>
               </div>

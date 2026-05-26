@@ -57,11 +57,18 @@ export const companiesApi = {
   get: (id: string) => req<{ company: Company }>(`/companies/${id}`).then(res => res.company),
   create: (data: CreateCompanyInput) =>
     req<{ company: Company }>('/companies', { method: 'POST', body: JSON.stringify(data) }).then(res => res.company),
-  update: (id: string, data: Partial<CreateCompanyInput>) =>
+  update: (id: string, data: UpdateCompanyInput) =>
     req<{ company: Company }>(`/companies/${id}`, { method: 'PATCH', body: JSON.stringify(data) }).then(res => res.company),
   delete: (id: string) => req(`/companies/${id}`, { method: 'DELETE' }),
-  createManager: (companyId: string, data: { email: string; name: string; password: string }) =>
-    req(`/companies/${companyId}/managers`, { method: 'POST', body: JSON.stringify(data) }),
+  inviteManager: (companyId: string, email: string) =>
+    req<InviteResponse>(`/companies/${companyId}/invitations`, {
+      method: 'POST',
+      body: JSON.stringify({ email, role: 'manager' }),
+    }),
+  resendInvitation: (companyId: string, invitationId: string) =>
+    req<InviteResponse>(`/companies/${companyId}/invitations/${invitationId}/resend`, {
+      method: 'POST',
+    }),
 }
 
 // ── Health ────────────────────────────────────────────────
@@ -81,8 +88,12 @@ export interface OwnerUser {
 export interface Company {
   id: string
   name: string
+  slug?: string
   industry?: string
+  plan?: 'free' | 'starter' | 'pro' | 'enterprise'
   status: 'trial' | 'active' | 'past_due' | 'restricted' | 'cancelled'
+  subscriptionStatus?: string | null
+  currentPeriodEnd?: string | null
   employeeCount?: number
   managerCount?: number
   createdAt: string
@@ -92,4 +103,24 @@ export interface Company {
 export interface CreateCompanyInput {
   name: string
   industry?: string
+}
+
+export interface UpdateCompanyInput extends Partial<CreateCompanyInput> {
+  plan?: 'free' | 'starter' | 'pro' | 'enterprise'
+  status?: 'trial' | 'active' | 'past_due' | 'restricted' | 'cancelled'
+}
+
+export interface InviteResponse {
+  invitation: {
+    id: string
+    company_id: string
+    email: string
+    role: 'manager' | 'company_admin' | 'worker'
+    expires_at: string
+    accepted_at: string | null
+    created_at: string
+  }
+  inviteUrl: string
+  token: string
+  emailDelivery?: { sent: boolean; skipped?: boolean; reason?: string; id?: string }
 }

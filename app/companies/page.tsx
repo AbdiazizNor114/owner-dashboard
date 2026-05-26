@@ -1,10 +1,11 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
-import { companiesApi, Company, CreateCompanyInput } from '@/lib/api'
+import { companiesApi, Company, CreateCompanyInput, UpdateCompanyInput } from '@/lib/api'
 import { Button } from '@/components/Button'
 import { EmptyState } from '@/components/EmptyState'
 import { SkeletonRow } from '@/components/Skeleton'
+import { Building2 } from 'lucide-react'
 
 const PLAN_COLOR: Record<string, string> = {
   free: 'text-[var(--text-3)] bg-[var(--muted)]',
@@ -17,13 +18,18 @@ const STATUS_DOT: Record<string, string> = {
   active: 'text-[var(--green)]',
   suspended: 'text-[var(--red)]',
   trial: 'text-[var(--amber)]',
+  past_due: 'text-[var(--amber)]',
+  restricted: 'text-[var(--red)]',
+  cancelled: 'text-[var(--text-3)]',
 }
 
-const BLANK: CreateCompanyInput = { name: '', industry: '' }
+const BLANK: UpdateCompanyInput = { name: '', industry: '', plan: 'free', status: 'trial' }
+const PLAN_OPTIONS: NonNullable<Company['plan']>[] = ['free', 'starter', 'pro', 'enterprise']
+const STATUS_OPTIONS: Company['status'][] = ['trial', 'active', 'past_due', 'restricted', 'cancelled']
 
-const MANAGER_BLANK = { email: '', name: '', password: '', confirmPassword: '' }
+const MANAGER_BLANK = { email: '' }
 
-export default function CompaniesPage() {
+function CompaniesPageContent() {
   const router = useRouter()
   const [companies, setCompanies] = useState<Company[]>([])
   const [loading, setLoading] = useState(true)
@@ -33,13 +39,17 @@ export default function CompaniesPage() {
   const [showViewModal, setShowViewModal] = useState(false)
   const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null)
   const [selectedCompany, setSelectedCompany] = useState<Company | null>(null)
-  const [form, setForm] = useState<CreateCompanyInput>(BLANK)
+  const [form, setForm] = useState<UpdateCompanyInput>(BLANK)
   const [managerForm, setManagerForm] = useState(MANAGER_BLANK)
+  const [managerInviteUrl, setManagerInviteUrl] = useState('')
+  const [managerInviteNotice, setManagerInviteNotice] = useState('')
   const [saving, setSaving] = useState(false)
   const [formError, setFormError] = useState('')
   const [managerFormError, setManagerFormError] = useState('')
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [search, setSearch] = useState('')
+  const [statusFilter, setStatusFilter] = useState<'all' | Company['status']>('all')
+  const [planFilter, setPlanFilter] = useState<'all' | NonNullable<Company['plan']>>('all')
 
   const searchParams = useSearchParams()
 
@@ -61,8 +71,15 @@ export default function CompaniesPage() {
     setLoading(true)
     try {
       const data = await companiesApi.list()
-      console.log('Companies loaded:', data)
       setCompanies(data)
+      const openCompanyId = searchParams.get('open')
+      if (openCompanyId) {
+        const company = data.find((item) => item.id === openCompanyId)
+        if (company) {
+          setSelectedCompany(company)
+          setShowViewModal(true)
+        }
+      }
     } catch (err) {
       console.error('Error loading companies:', err)
       setCompanies([])
@@ -79,7 +96,7 @@ export default function CompaniesPage() {
     setSaving(true)
     setFormError('')
     try {
-      const created = await companiesApi.create({ name: form.name, industry: form.industry })
+      const created = await companiesApi.create({ name: form.name || '', industry: form.industry })
       setCompanies(prev => [created, ...prev])
       setForm(BLANK)
       setShowForm(false)
@@ -110,7 +127,7 @@ export default function CompaniesPage() {
     setSaving(true)
     setFormError('')
     try {
-      const updated = await companiesApi.update(selectedCompany.id, { name: form.name, industry: form.industry })
+      const updated = await companiesApi.update(selectedCompany.id, form as UpdateCompanyInput)
       setCompanies(prev => prev.map(c => c.id === selectedCompany.id ? updated : c))
       setSelectedCompany(updated)
       setForm(BLANK)
@@ -127,6 +144,8 @@ export default function CompaniesPage() {
     setForm({
       name: company.name,
       industry: company.industry || '',
+      plan: company.plan || 'free',
+      status: company.status,
     })
     setShowEditForm(true)
     setFormError('')
@@ -137,38 +156,23 @@ export default function CompaniesPage() {
     setShowViewModal(true)
   }
 
-  async function handleCreateManager(e: React.FormEvent) {
+  async function handleInviteManager(e: React.FormEvent) {
     e.preventDefault()
-    if (!managerForm.email.trim() || !managerForm.name.trim() || !managerForm.password.trim()) {
-      setManagerFormError('All fields are required')
-      return
-    }
-    if (managerForm.password !== managerForm.confirmPassword) {
-      setManagerFormError('Passwords do not match')
-      return
-    }
-    if (managerForm.password.length < 8) {
-      setManagerFormError('Password must be at least 8 characters')
+    if (!managerForm.email.trim()) {
+      setManagerFormError('Email is required')
       return
     }
     setSaving(true)
     setManagerFormError('')
+    setManagerInviteUrl('')
+    setManagerInviteNotice('')
     try {
-      await companiesApi.createManager(selectedCompanyId!, {
-        email: managerForm.email,
-        name: managerForm.name,
-        password: managerForm.password,
-      })
+      const result = await companiesApi.inviteManager(selectedCompanyId!, managerForm.email)
       setManagerForm(MANAGER_BLANK)
-      setShowManagerForm(false)
-      alert('Manager account created successfully! The manager can now log in to the manager dashboard.')
+      setManagerInviteUrl(result.inviteUrl)
+      setManagerInviteNotice(result.emailDelivery?.sent ? 'Invite email sent.' : 'Invite created. Email was not sent, use the link below.')
     } catch (err: unknown) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to create manager'
-      if (errorMessage.includes('already exists')) {
-        setManagerFormError('A user with this email already exists. Please use a different email.')
-      } else {
-        setManagerFormError(errorMessage)
-      }
+      setManagerFormError(err instanceof Error ? err.message : 'Failed to invite manager')
     } finally {
       setSaving(false)
     }
@@ -178,12 +182,31 @@ export default function CompaniesPage() {
     setSelectedCompanyId(companyId)
     setShowManagerForm(true)
     setManagerFormError('')
+    setManagerInviteUrl('')
+    setManagerInviteNotice('')
   }
 
-  const filtered = companies.filter(c =>
-    c.name.toLowerCase().includes(search.toLowerCase()) ||
-    (c.industry || '').toLowerCase().includes(search.toLowerCase())
-  )
+  async function updateLifecycle(company: Company, updates: UpdateCompanyInput, label: string) {
+    if (!confirm(`${label} "${company.name}"? Company data and audit history will be preserved.`)) return
+    setDeletingId(company.id)
+    try {
+      const updated = await companiesApi.update(company.id, updates)
+      setCompanies(prev => prev.map(c => c.id === company.id ? updated : c))
+      if (selectedCompany?.id === company.id) setSelectedCompany(updated)
+    } catch (err: unknown) {
+      setFormError(err instanceof Error ? err.message : `Failed to ${label.toLowerCase()}`)
+    } finally {
+      setDeletingId(null)
+    }
+  }
+
+  const filtered = companies.filter(c => {
+    const matchesSearch = c.name.toLowerCase().includes(search.toLowerCase()) ||
+      (c.industry || '').toLowerCase().includes(search.toLowerCase())
+    const matchesStatus = statusFilter === 'all' || c.status === statusFilter
+    const matchesPlan = planFilter === 'all' || (c.plan || 'free') === planFilter
+    return matchesSearch && matchesStatus && matchesPlan
+  })
 
   return (
     <div className="fade-in">
@@ -225,6 +248,26 @@ export default function CompaniesPage() {
                   className="w-full bg-[var(--surface)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--text)] placeholder-[var(--text-3)] focus:outline-none focus:border-[var(--green)]"
                 />
               </div>
+              <div>
+                <label className="block text-xs text-[var(--text-2)] mb-1.5">Plan</label>
+                <select
+                  value={form.plan || 'free'}
+                  onChange={e => setForm(f => ({ ...f, plan: e.target.value as NonNullable<Company['plan']> }))}
+                  className="w-full bg-[var(--surface)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--text)] focus:outline-none focus:border-[var(--blue)]"
+                >
+                  {PLAN_OPTIONS.map(plan => <option key={plan} value={plan}>{plan}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-[var(--text-2)] mb-1.5">Status</label>
+                <select
+                  value={form.status || 'trial'}
+                  onChange={e => setForm(f => ({ ...f, status: e.target.value as Company['status'] }))}
+                  className="w-full bg-[var(--surface)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--text)] focus:outline-none focus:border-[var(--blue)]"
+                >
+                  {STATUS_OPTIONS.map(status => <option key={status} value={status}>{status}</option>)}
+                </select>
+              </div>
             </div>
             {formError && (
               <p className="text-xs text-[var(--red)] mb-3 bg-[#e05a5a12] px-3 py-2 rounded-lg border border-[#e05a5a25]">{formError}</p>
@@ -263,6 +306,16 @@ export default function CompaniesPage() {
                 <div className={`text-xs font-medium capitalize ${STATUS_DOT[selectedCompany.status]}`}>● {selectedCompany.status}</div>
               </div>
               <div>
+                <p className="text-xs text-[var(--text-3)] mb-1">Plan</p>
+                <span className={`text-xs font-semibold px-2 py-0.5 rounded-full capitalize ${PLAN_COLOR[selectedCompany.plan || 'free']}`}>
+                  {selectedCompany.plan || 'free'}
+                </span>
+              </div>
+              <div>
+                <p className="text-xs text-[var(--text-3)] mb-1">Subscription</p>
+                <p className="text-sm text-[var(--text)]">{selectedCompany.subscriptionStatus || 'No subscription'}</p>
+              </div>
+              <div>
                 <p className="text-xs text-[var(--text-3)] mb-1">Employees</p>
                 <p className="text-sm text-[var(--text)]">{selectedCompany.employeeCount ?? 0}</p>
               </div>
@@ -281,6 +334,9 @@ export default function CompaniesPage() {
               </Button>
               <Button onClick={() => { setShowViewModal(false); openEditForm(selectedCompany); }}>
                 Edit
+              </Button>
+              <Button variant="secondary" onClick={() => { setShowViewModal(false); openManagerForm(selectedCompany.id); }}>
+                Invite manager
               </Button>
             </div>
           </div>
@@ -314,6 +370,26 @@ export default function CompaniesPage() {
                   className="w-full bg-[var(--surface)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--text)] placeholder-[var(--text-3)] focus:outline-none focus:border-[var(--blue)]"
                 />
               </div>
+              <div>
+                <label className="block text-xs text-[var(--text-2)] mb-1.5">Plan</label>
+                <select
+                  value={form.plan || 'free'}
+                  onChange={e => setForm(f => ({ ...f, plan: e.target.value as NonNullable<Company['plan']> }))}
+                  className="w-full bg-[var(--surface)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--text)] focus:outline-none focus:border-[var(--blue)]"
+                >
+                  {PLAN_OPTIONS.map(plan => <option key={plan} value={plan}>{plan}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-[var(--text-2)] mb-1.5">Status</label>
+                <select
+                  value={form.status || 'trial'}
+                  onChange={e => setForm(f => ({ ...f, status: e.target.value as Company['status'] }))}
+                  className="w-full bg-[var(--surface)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--text)] focus:outline-none focus:border-[var(--blue)]"
+                >
+                  {STATUS_OPTIONS.map(status => <option key={status} value={status}>{status}</option>)}
+                </select>
+              </div>
             </div>
             {formError && (
               <p className="text-xs text-[var(--red)] mb-3 bg-[#e05a5a12] px-3 py-2 rounded-lg border border-[#e05a5a25]">{formError}</p>
@@ -330,24 +406,15 @@ export default function CompaniesPage() {
         </div>
       )}
 
-      {/* Add manager form */}
+      {/* Invite manager form */}
       {showManagerForm && (
         <div className="bg-[var(--card)] border border-[var(--blue)] border-opacity-30 rounded-xl p-5 mb-6 slide-in">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-sm font-semibold text-[var(--text)]">Add Manager</h2>
+            <h2 className="text-sm font-semibold text-[var(--text)]">Invite manager</h2>
             <button onClick={() => setShowManagerForm(false)} className="text-[var(--text-3)] hover:text-[var(--text)] text-lg">✕</button>
           </div>
-          <form onSubmit={handleCreateManager}>
+          <form onSubmit={handleInviteManager}>
             <div className="space-y-4 mb-4">
-              <div>
-                <label className="block text-xs text-[var(--text-2)] mb-1.5">Manager name *</label>
-                <input
-                  value={managerForm.name}
-                  onChange={e => setManagerForm(f => ({ ...f, name: e.target.value }))}
-                  placeholder="John Doe"
-                  className="w-full bg-[var(--surface)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--text)] placeholder-[var(--text-3)] focus:outline-none focus:border-[var(--blue)]"
-                />
-              </div>
               <div>
                 <label className="block text-xs text-[var(--text-2)] mb-1.5">Email *</label>
                 <input
@@ -357,37 +424,27 @@ export default function CompaniesPage() {
                   placeholder="manager@company.com"
                   className="w-full bg-[var(--surface)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--text)] placeholder-[var(--text-3)] focus:outline-none focus:border-[var(--blue)]"
                 />
-              </div>
-              <div>
-                <label className="block text-xs text-[var(--text-2)] mb-1.5">Password *</label>
-                <input
-                  type="password"
-                  value={managerForm.password}
-                  onChange={e => setManagerForm(f => ({ ...f, password: e.target.value }))}
-                  placeholder="•••••••• (min 8 characters)"
-                  className="w-full bg-[var(--surface)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--text)] placeholder-[var(--text-3)] focus:outline-none focus:border-[var(--blue)]"
-                />
-              </div>
-              <div>
-                <label className="block text-xs text-[var(--text-2)] mb-1.5">Confirm password *</label>
-                <input
-                  type="password"
-                  value={managerForm.confirmPassword}
-                  onChange={e => setManagerForm(f => ({ ...f, confirmPassword: e.target.value }))}
-                  placeholder="••••••••"
-                  className="w-full bg-[var(--surface)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--text)] placeholder-[var(--text-3)] focus:outline-none focus:border-[var(--blue)]"
-                />
+                <p className="mt-1 text-xs text-[var(--text-3)]">They will choose their name, phone number, and password from the invite link.</p>
               </div>
             </div>
             {managerFormError && (
               <p className="text-xs text-[var(--red)] mb-3 bg-[#e05a5a12] px-3 py-2 rounded-lg border border-[#e05a5a25]">{managerFormError}</p>
+            )}
+            {managerInviteNotice && (
+              <p className="mb-3 rounded-lg border border-[var(--green)] bg-[var(--green-glow)] px-3 py-2 text-xs text-[var(--green)]">{managerInviteNotice}</p>
+            )}
+            {managerInviteUrl && (
+              <div className="mb-3 rounded-lg border border-[var(--green)] bg-[var(--green-glow)] p-3">
+                <p className="mb-1 text-xs font-semibold text-[var(--green)]">Invite link</p>
+                <input readOnly value={managerInviteUrl} className="w-full rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 py-1.5 text-xs text-[var(--text)]" />
+              </div>
             )}
             <div className="flex gap-3 justify-end">
               <Button type="button" variant="secondary" onClick={() => setShowManagerForm(false)}>
                 Cancel
               </Button>
               <Button type="submit" loading={saving}>
-                {saving ? 'Creating...' : 'Create manager account'}
+                {saving ? 'Sending...' : 'Create invite'}
               </Button>
             </div>
           </form>
@@ -395,27 +452,43 @@ export default function CompaniesPage() {
       )}
 
       {/* Search */}
-      <div className="mb-4">
+      <div className="mb-4 flex flex-wrap items-center gap-3">
         <input
           value={search}
           onChange={e => setSearch(e.target.value)}
           placeholder="Search companies..."
           className="w-64 bg-[var(--card)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--text)] placeholder-[var(--text-3)] focus:outline-none focus:border-[var(--green)]"
         />
+        <select
+          value={statusFilter}
+          onChange={e => setStatusFilter(e.target.value as 'all' | Company['status'])}
+          className="bg-[var(--card)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--text)]"
+        >
+          <option value="all">All statuses</option>
+          {STATUS_OPTIONS.map(status => <option key={status} value={status}>{status}</option>)}
+        </select>
+        <select
+          value={planFilter}
+          onChange={e => setPlanFilter(e.target.value as 'all' | NonNullable<Company['plan']>)}
+          className="bg-[var(--card)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--text)]"
+        >
+          <option value="all">All plans</option>
+          {PLAN_OPTIONS.map(plan => <option key={plan} value={plan}>{plan}</option>)}
+        </select>
       </div>
 
       {/* Table */}
       <div className="bg-[var(--card)] border border-[var(--border)] rounded-xl overflow-hidden">
         <div className="grid px-5 py-3 bg-[var(--surface)] border-b border-[var(--border)] text-xs font-medium text-[var(--text-3)] uppercase tracking-wider"
-             style={{ gridTemplateColumns: '1fr 120px 90px 80px 100px' }}>
-          <div>Company</div><div>Industry</div><div>Status</div><div>Employees</div><div></div>
+             style={{ gridTemplateColumns: '1fr 110px 110px 90px 80px 220px' }}>
+          <div>Company</div><div>Industry</div><div>Plan</div><div>Status</div><div>Employees</div><div></div>
         </div>
 
         {loading ? (
           <>
             <div className="grid px-5 py-3 bg-[var(--surface)] border-b border-[var(--border)] text-xs font-medium text-[var(--text-3)] uppercase tracking-wider"
-                 style={{ gridTemplateColumns: '1fr 120px 90px 80px 100px' }}>
-              <div>Company</div><div>Industry</div><div>Status</div><div>Employees</div><div></div>
+                 style={{ gridTemplateColumns: '1fr 110px 110px 90px 80px 220px' }}>
+              <div>Company</div><div>Industry</div><div>Plan</div><div>Status</div><div>Employees</div><div></div>
             </div>
             <SkeletonRow />
             <SkeletonRow />
@@ -423,7 +496,7 @@ export default function CompaniesPage() {
           </>
         ) : filtered.length === 0 ? (
           <EmptyState
-            icon="🏢"
+            icon={<Building2 className="h-6 w-6" />}
             title={search ? 'No companies match your search' : 'No companies yet'}
             description={search ? 'Try a different search term' : 'Add your first company to get started'}
             action={search ? undefined : { label: 'Add company', href: '/companies?new=1' }}
@@ -432,31 +505,39 @@ export default function CompaniesPage() {
           <div className="divide-y divide-[var(--border)]">
             {filtered.map(c => (
               <div key={c.id} className="grid items-center px-5 py-3.5 hover:bg-[var(--surface)] transition-colors"
-                   style={{ gridTemplateColumns: '1fr 120px 90px 80px 100px' }}>
+                   style={{ gridTemplateColumns: '1fr 110px 110px 90px 80px 220px' }}>
                 <div>
                   <p className="text-sm font-medium text-[var(--text)]">{c.name}</p>
                 </div>
                 <div className="text-xs text-[var(--text-2)]">{c.industry || '—'}</div>
+                <div>
+                  <span className={`text-xs font-semibold px-2 py-0.5 rounded-full capitalize ${PLAN_COLOR[c.plan || 'free']}`}>
+                    {c.plan || 'free'}
+                  </span>
+                </div>
                 <div className={`text-xs font-medium capitalize ${STATUS_DOT[c.status]}`}>● {c.status}</div>
                 <div className="text-sm text-[var(--text-2)]">{c.employeeCount ?? 0}</div>
-                <div className="flex items-center gap-3 justify-end">
+                <div className="flex items-center gap-2 justify-end">
                   <Button variant="secondary" size="sm" onClick={() => openViewModal(c)}>
                     View
-                  </Button>
-                  <Button variant="secondary" size="sm" onClick={() => openManagerForm(c.id)}>
-                    + Add Manager
                   </Button>
                   <Button variant="secondary" size="sm" onClick={() => openEditForm(c)}>
                     Edit
                   </Button>
-                  <Button
-                    variant="danger"
-                    size="sm"
-                    onClick={() => handleDelete(c.id, c.name)}
-                    loading={deletingId === c.id}
-                  >
-                    {deletingId === c.id ? '...' : 'Delete'}
-                  </Button>
+                  {c.status !== 'restricted' && c.status !== 'cancelled' && (
+                    <Button variant="secondary" size="sm" onClick={() => updateLifecycle(c, { status: 'restricted' }, 'Restrict')}>
+                      Restrict
+                    </Button>
+                  )}
+                  {c.status !== 'cancelled' ? (
+                    <Button variant="danger" size="sm" onClick={() => updateLifecycle(c, { status: 'cancelled' }, 'Cancel')} loading={deletingId === c.id}>
+                      Cancel
+                    </Button>
+                  ) : (
+                    <Button variant="secondary" size="sm" onClick={() => updateLifecycle(c, { status: 'active' }, 'Reactivate')} loading={deletingId === c.id}>
+                      Reactivate
+                    </Button>
+                  )}
                 </div>
               </div>
             ))}
@@ -464,5 +545,13 @@ export default function CompaniesPage() {
         )}
       </div>
     </div>
+  )
+}
+
+export default function CompaniesPage() {
+  return (
+    <Suspense fallback={<div className="p-6 text-sm text-[var(--text-2)]">Loading companies...</div>}>
+      <CompaniesPageContent />
+    </Suspense>
   )
 }
