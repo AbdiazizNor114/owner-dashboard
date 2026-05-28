@@ -14,6 +14,7 @@ export default function OwnerRequestsPage() {
   const [error, setError] = useState('')
   const [lastSync, setLastSync] = useState<Date | null>(null)
   const [timelineByRequest, setTimelineByRequest] = useState<Record<string, CompanyChangeRequestTimelineEvent[]>>({})
+  const [markingAll, setMarkingAll] = useState(false)
 
   useEffect(() => {
     load()
@@ -29,19 +30,6 @@ export default function OwnerRequestsPage() {
       .then((data) => {
         setRequests(data)
         setLastSync(new Date())
-        const unread = data.filter((request) => !request.is_read_by_owner)
-        if (unread.length > 0) {
-          Promise.all(unread.map((request) => companyChangeRequestsApi.markRead(request.id).catch(() => null)))
-            .then(() =>
-              setRequests((prev) =>
-                prev.map((request) =>
-                  unread.some((item) => item.id === request.id)
-                    ? { ...request, is_read_by_owner: true, owner_read_at: new Date().toISOString() }
-                    : request,
-                ),
-              ),
-            )
-        }
       })
       .finally(() => setLoading(false))
   }
@@ -67,12 +55,42 @@ export default function OwnerRequestsPage() {
     setTimelineByRequest((prev) => ({ ...prev, [requestId]: timeline }))
   }
 
+  async function markRequestRead(requestId: string) {
+    const updated = await companyChangeRequestsApi.markRead(requestId)
+    setRequests((prev) => prev.map((item) => (item.id === requestId ? updated : item)))
+  }
+
+  async function markAllAsRead() {
+    const unread = requests.filter((request) => !request.is_read_by_owner)
+    if (unread.length === 0) return
+    setMarkingAll(true)
+    try {
+      await Promise.all(unread.map((request) => companyChangeRequestsApi.markRead(request.id).catch(() => null)))
+      setRequests((prev) =>
+        prev.map((request) => ({ ...request, is_read_by_owner: true, owner_read_at: request.owner_read_at ?? new Date().toISOString() })),
+      )
+    } finally {
+      setMarkingAll(false)
+    }
+  }
+
   const pendingCount = requests.filter((request) => request.status === 'pending').length
+  const unreadCount = requests.filter((request) => !request.is_read_by_owner).length
 
   return (
     <div className="fade-in space-y-6">
       <div>
-        <h1 className="text-xl font-semibold text-[var(--text)]">Company Change Requests</h1>
+        <div className="flex items-center justify-between gap-3">
+          <h1 className="text-xl font-semibold text-[var(--text)]">Company Change Requests</h1>
+          <button
+            type="button"
+            onClick={markAllAsRead}
+            disabled={markingAll || unreadCount === 0}
+            className="rounded-md border border-[var(--border)] px-3 py-1.5 text-xs font-medium text-[var(--text-2)] disabled:opacity-50"
+          >
+            {markingAll ? 'Marking...' : `Mark all as read${unreadCount > 0 ? ` (${unreadCount})` : ''}`}
+          </button>
+        </div>
         <p className="mt-1 text-sm text-[var(--text-2)]">
           Review manager requests for reactivation and plan changes.
         </p>
@@ -100,9 +118,14 @@ export default function OwnerRequestsPage() {
                 <div key={request.id} className="space-y-3 px-4 py-4">
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-sm font-semibold text-[var(--text)]">
-                        {request.companies?.name || request.company_id}
-                      </p>
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-semibold text-[var(--text)]">
+                          {request.companies?.name || request.company_id}
+                        </p>
+                        {!request.is_read_by_owner ? (
+                          <span className="rounded-full bg-[var(--green-glow)] px-2 py-0.5 text-[10px] font-semibold text-[var(--green)]">NEW</span>
+                        ) : null}
+                      </div>
                       <p className="text-xs text-[var(--text-3)]">
                         {request.request_type === 'reactivate_company'
                           ? 'Reactivate company'
@@ -150,6 +173,15 @@ export default function OwnerRequestsPage() {
                   >
                     View timeline
                   </button>
+                  {!request.is_read_by_owner ? (
+                    <button
+                      type="button"
+                      onClick={() => markRequestRead(request.id)}
+                      className="ml-3 text-xs font-medium text-[var(--green)] hover:underline"
+                    >
+                      Mark as read
+                    </button>
+                  ) : null}
                   {timelineByRequest[request.id]?.length ? (
                     <div className="rounded-lg bg-[var(--surface)] px-3 py-2">
                       {timelineByRequest[request.id].map((event) => (

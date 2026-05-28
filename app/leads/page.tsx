@@ -10,6 +10,7 @@ export default function LeadsPage() {
   const [leads, setLeads] = useState<LeadRequest[]>([])
   const [loading, setLoading] = useState(true)
   const [updatingId, setUpdatingId] = useState<string | null>(null)
+  const [markingAll, setMarkingAll] = useState(false)
 
   useEffect(() => {
     const token = localStorage.getItem('shaqonet_token')
@@ -20,22 +21,7 @@ export default function LeadsPage() {
 
     leadsApi
       .list()
-      .then((items) => {
-        setLeads(items)
-        const unread = items.filter((lead) => !lead.is_read_by_owner)
-        if (unread.length > 0) {
-          Promise.all(unread.map((lead) => leadsApi.markRead(lead.id).catch(() => null)))
-            .then(() =>
-              setLeads((prev) =>
-                prev.map((lead) =>
-                  unread.some((item) => item.id === lead.id)
-                    ? { ...lead, is_read_by_owner: true, read_by_owner_at: new Date().toISOString() }
-                    : lead,
-                ),
-              ),
-            )
-        }
-      })
+      .then((items) => setLeads(items))
       .catch(() => setLeads([]))
       .finally(() => setLoading(false))
   }, [router])
@@ -50,10 +36,41 @@ export default function LeadsPage() {
     }
   }
 
+  async function markLeadRead(leadId: string) {
+    const updated = await leadsApi.markRead(leadId)
+    setLeads((prev) => prev.map((lead) => (lead.id === leadId ? updated : lead)))
+  }
+
+  async function markAllAsRead() {
+    const unread = leads.filter((lead) => !lead.is_read_by_owner)
+    if (unread.length === 0) return
+    setMarkingAll(true)
+    try {
+      await Promise.all(unread.map((lead) => leadsApi.markRead(lead.id).catch(() => null)))
+      setLeads((prev) =>
+        prev.map((lead) => ({ ...lead, is_read_by_owner: true, read_by_owner_at: lead.read_by_owner_at ?? new Date().toISOString() })),
+      )
+    } finally {
+      setMarkingAll(false)
+    }
+  }
+
+  const unreadCount = leads.filter((lead) => !lead.is_read_by_owner).length
+
   return (
     <div className="fade-in">
       <div className="mb-8">
-        <h1 className="text-xl font-semibold text-[var(--text)]">Lead Requests</h1>
+        <div className="flex items-center justify-between gap-3">
+          <h1 className="text-xl font-semibold text-[var(--text)]">Lead Requests</h1>
+          <button
+            type="button"
+            onClick={markAllAsRead}
+            disabled={markingAll || unreadCount === 0}
+            className="rounded-md border border-[var(--border)] px-3 py-1.5 text-xs font-medium text-[var(--text-2)] disabled:opacity-50"
+          >
+            {markingAll ? 'Marking...' : `Mark all as read${unreadCount > 0 ? ` (${unreadCount})` : ''}`}
+          </button>
+        </div>
         <p className="mt-0.5 text-sm text-[var(--text-2)]">
           New trial and contact requests from shaqonet.app
         </p>
@@ -77,7 +94,12 @@ export default function LeadsPage() {
               <div key={lead.id} className="px-5 py-4">
                 <div className="grid grid-cols-[1.2fr_1fr_0.7fr_0.7fr] items-center gap-4">
                   <div>
-                    <p className="text-sm font-medium text-[var(--text)]">{lead.work_email}</p>
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-medium text-[var(--text)]">{lead.work_email}</p>
+                      {!lead.is_read_by_owner ? (
+                        <span className="rounded-full bg-[var(--green-glow)] px-2 py-0.5 text-[10px] font-semibold text-[var(--green)]">NEW</span>
+                      ) : null}
+                    </div>
                     <p className="text-xs text-[var(--text-3)]">{lead.source}</p>
                   </div>
                   <div>
@@ -107,6 +129,15 @@ export default function LeadsPage() {
                 <div className="mt-3 rounded-lg bg-[var(--surface)] px-3 py-2 text-sm text-[var(--text-2)]">
                   {lead.message?.trim() ? lead.message : 'No message provided.'}
                 </div>
+                {!lead.is_read_by_owner ? (
+                  <button
+                    type="button"
+                    onClick={() => markLeadRead(lead.id)}
+                    className="mt-2 text-xs font-medium text-[var(--green)] hover:underline"
+                  >
+                    Mark as read
+                  </button>
+                ) : null}
               </div>
             ))}
           </div>
