@@ -1,7 +1,8 @@
 'use client'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { authApi } from '@/lib/api'
+import { authApi, companyChangeRequestsApi, leadsApi } from '@/lib/api'
+import { useEffect, useState } from 'react'
 import {
   Building2,
   CreditCard,
@@ -24,6 +25,33 @@ const NAV = [
 export default function OwnerSidebar() {
   const path = usePathname()
   const router = useRouter()
+  const [leadUnreadCount, setLeadUnreadCount] = useState(0)
+  const [requestUnreadCount, setRequestUnreadCount] = useState(0)
+
+  useEffect(() => {
+    let active = true
+    const loadUnread = async () => {
+      try {
+        const [leads, requests] = await Promise.all([
+          leadsApi.list(),
+          companyChangeRequestsApi.list(),
+        ])
+        if (!active) return
+        setLeadUnreadCount(leads.filter((lead) => !lead.is_read_by_owner).length)
+        setRequestUnreadCount(requests.filter((request) => !request.is_read_by_owner).length)
+      } catch {
+        if (!active) return
+        setLeadUnreadCount(0)
+        setRequestUnreadCount(0)
+      }
+    }
+    loadUnread()
+    const id = window.setInterval(loadUnread, 20000)
+    return () => {
+      active = false
+      window.clearInterval(id)
+    }
+  }, [])
 
   async function handleLogout() {
     try { await authApi.logout() } catch {}
@@ -54,7 +82,12 @@ export default function OwnerSidebar() {
               }`}
             >
               <Icon className="h-4 w-4 shrink-0" strokeWidth={2.2} />
-              {n.label}
+              <span className="flex-1">{n.label}</span>
+              {(n.href === '/leads' && leadUnreadCount > 0) || (n.href === '/requests' && requestUnreadCount > 0) ? (
+                <span className="rounded-full bg-[var(--red)] px-2 py-0.5 text-[10px] font-semibold text-white">
+                  {n.href === '/leads' ? leadUnreadCount : requestUnreadCount}
+                </span>
+              ) : null}
             </Link>
           )
         })}

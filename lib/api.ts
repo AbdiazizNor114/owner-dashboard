@@ -86,6 +86,8 @@ export const healthApi = {
 
 export const leadsApi = {
   list: () => req<{ leads: LeadRequest[] }>('/leads').then((res) => res.leads),
+  markRead: (leadId: string) =>
+    req<{ lead: LeadRequest }>(`/leads/${leadId}/read`, { method: 'PATCH' }).then((res) => res.lead),
   updateStatus: (leadId: string, status: LeadRequest['status']) =>
     req<{ lead: LeadRequest }>(`/leads/${leadId}`, {
       method: 'PATCH',
@@ -96,6 +98,8 @@ export const leadsApi = {
 export const companyChangeRequestsApi = {
   list: () =>
     req<{ requests: CompanyChangeRequest[] }>('/change-requests').then((res) => res.requests),
+  markRead: (requestId: string) =>
+    req<{ request: CompanyChangeRequest }>(`/change-requests/${requestId}/read`, { method: 'PATCH' }).then((res) => res.request),
   review: (
     requestId: string,
     data: { decision: 'approved' | 'denied'; ownerNote?: string },
@@ -166,6 +170,8 @@ export interface LeadRequest {
   message: string | null
   status: 'new' | 'contacted' | 'closed'
   source: string
+  is_read_by_owner: boolean
+  read_by_owner_at: string | null
   created_at: string
   updated_at: string
 }
@@ -181,6 +187,10 @@ export interface CompanyChangeRequest {
   owner_note: string | null
   reviewed_by_user_id: string | null
   reviewed_at: string | null
+  is_read_by_owner: boolean
+  owner_read_at: string | null
+  is_read_by_manager: boolean
+  manager_read_at: string | null
   created_at: string
   updated_at: string
   companies?: { id: string; name: string; status: string } | null

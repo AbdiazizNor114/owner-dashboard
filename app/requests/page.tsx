@@ -29,6 +29,19 @@ export default function OwnerRequestsPage() {
       .then((data) => {
         setRequests(data)
         setLastSync(new Date())
+        const unread = data.filter((request) => !request.is_read_by_owner)
+        if (unread.length > 0) {
+          Promise.all(unread.map((request) => companyChangeRequestsApi.markRead(request.id).catch(() => null)))
+            .then(() =>
+              setRequests((prev) =>
+                prev.map((request) =>
+                  unread.some((item) => item.id === request.id)
+                    ? { ...request, is_read_by_owner: true, owner_read_at: new Date().toISOString() }
+                    : request,
+                ),
+              ),
+            )
+        }
       })
       .finally(() => setLoading(false))
   }

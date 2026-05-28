@@ -20,7 +20,22 @@ export default function LeadsPage() {
 
     leadsApi
       .list()
-      .then(setLeads)
+      .then((items) => {
+        setLeads(items)
+        const unread = items.filter((lead) => !lead.is_read_by_owner)
+        if (unread.length > 0) {
+          Promise.all(unread.map((lead) => leadsApi.markRead(lead.id).catch(() => null)))
+            .then(() =>
+              setLeads((prev) =>
+                prev.map((lead) =>
+                  unread.some((item) => item.id === lead.id)
+                    ? { ...lead, is_read_by_owner: true, read_by_owner_at: new Date().toISOString() }
+                    : lead,
+                ),
+              ),
+            )
+        }
+      })
       .catch(() => setLeads([]))
       .finally(() => setLoading(false))
   }, [router])
