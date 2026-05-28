@@ -5,6 +5,7 @@ import { authApi } from '@/lib/api'
 import {
   Building2,
   CreditCard,
+  Inbox,
   LayoutDashboard,
   LogOut,
   Settings,
@@ -13,6 +14,7 @@ import {
 const NAV = [
   { href: '/dashboard', icon: LayoutDashboard, label: 'Overview' },
   { href: '/companies', icon: Building2, label: 'Companies' },
+  { href: '/leads', icon: Inbox, label: 'Leads' },
   { href: '/billing', icon: CreditCard, label: 'Billing' },
   { href: '/settings', icon: Settings, label: 'Settings' },
 ]

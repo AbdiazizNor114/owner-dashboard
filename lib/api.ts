@@ -3,6 +3,7 @@
 // Auth: Supabase JWT passed as Bearer token
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api/v1'
+const ROOT = BASE.endsWith('/api/v1') ? BASE.slice(0, -7) : BASE
 
 function getToken() {
   if (typeof window === 'undefined') return null
@@ -74,7 +75,22 @@ export const companiesApi = {
 // ── Health ────────────────────────────────────────────────
 // GET /health → { status, uptime, ... }
 export const healthApi = {
-  check: () => req<{ status: string; uptime: number; version: string }>('/health'),
+  check: async () => {
+    const res = await fetch(`${ROOT}/health`)
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}`)
+    }
+    return res.json() as Promise<{ status: string; uptime: number; version?: string }>
+  },
+}
+
+export const leadsApi = {
+  list: () => req<{ leads: LeadRequest[] }>('/leads').then((res) => res.leads),
+  updateStatus: (leadId: string, status: LeadRequest['status']) =>
+    req<{ lead: LeadRequest }>(`/leads/${leadId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status }),
+    }).then((res) => res.lead),
 }
 
 // ── Types ─────────────────────────────────────────────────
@@ -123,4 +139,16 @@ export interface InviteResponse {
   inviteUrl: string
   token: string
   emailDelivery?: { sent: boolean; skipped?: boolean; reason?: string; id?: string }
+}
+
+export interface LeadRequest {
+  id: string
+  work_email: string
+  company_name: string
+  team_size: string
+  message: string | null
+  status: 'new' | 'contacted' | 'closed'
+  source: string
+  created_at: string
+  updated_at: string
 }
