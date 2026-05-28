@@ -93,6 +93,19 @@ export const leadsApi = {
     }).then((res) => res.lead),
 }
 
+export const companyChangeRequestsApi = {
+  list: () =>
+    req<{ requests: CompanyChangeRequest[] }>('/change-requests').then((res) => res.requests),
+  review: (
+    requestId: string,
+    data: { decision: 'approved' | 'denied'; ownerNote?: string },
+  ) =>
+    req<{ request: CompanyChangeRequest }>(`/change-requests/${requestId}/review`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }).then((res) => res.request),
+}
+
 // ── Types ─────────────────────────────────────────────────
 export interface OwnerUser {
   id: string
@@ -151,4 +164,20 @@ export interface LeadRequest {
   source: string
   created_at: string
   updated_at: string
+}
+
+export interface CompanyChangeRequest {
+  id: string
+  company_id: string
+  requested_by_membership_id: string
+  request_type: 'reactivate_company' | 'change_plan'
+  requested_plan: 'free' | 'starter' | 'pro' | 'enterprise' | null
+  manager_note: string | null
+  status: 'pending' | 'approved' | 'denied'
+  owner_note: string | null
+  reviewed_by_user_id: string | null
+  reviewed_at: string | null
+  created_at: string
+  updated_at: string
+  companies?: { id: string; name: string; status: string } | null
 }
