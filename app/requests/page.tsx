@@ -7,6 +7,7 @@ export default function OwnerRequestsPage() {
   const [loading, setLoading] = useState(true)
   const [workingId, setWorkingId] = useState<string | null>(null)
   const [ownerNote, setOwnerNote] = useState<Record<string, string>>({})
+  const [error, setError] = useState('')
 
   useEffect(() => {
     companyChangeRequestsApi
@@ -17,12 +18,15 @@ export default function OwnerRequestsPage() {
 
   async function review(request: CompanyChangeRequest, decision: 'approved' | 'denied') {
     setWorkingId(request.id)
+    setError('')
     try {
       const updated = await companyChangeRequestsApi.review(request.id, {
         decision,
         ownerNote: ownerNote[request.id]?.trim() || undefined,
       })
       setRequests((prev) => prev.map((item) => (item.id === request.id ? updated : item)))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Review failed')
     } finally {
       setWorkingId(null)
     }
@@ -38,6 +42,11 @@ export default function OwnerRequestsPage() {
       </div>
 
       <div className="rounded-xl border border-[var(--border)] bg-[var(--card)]">
+        {error && (
+          <div className="border-b border-[var(--border)] bg-[#e05a5a12] px-4 py-3 text-sm text-[var(--red)]">
+            {error}
+          </div>
+        )}
         {loading ? (
           <div className="px-4 py-6 text-sm text-[var(--text-3)]">Loading...</div>
         ) : requests.length === 0 ? (
