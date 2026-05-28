@@ -63,7 +63,7 @@ export default function OwnerSidebar() {
     <aside className="fixed left-0 top-0 z-30 flex h-screen w-56 flex-col border-r border-[var(--border)] bg-[var(--surface)]">
       <div className="border-b border-[var(--border)] px-4 py-5">
         <Link href="/dashboard" className="flex h-12 items-center">
-          <img src="/logos/shaqonet-logo-transparent-dark.svg" alt="ShaqoNet" className="h-9 w-auto max-w-[175px] object-contain" />
+          <img src="/logos/shaqonet-logo-transparent-white.svg" alt="ShaqoNet" className="h-9 w-auto max-w-[175px] object-contain" />
         </Link>
       </div>
 
