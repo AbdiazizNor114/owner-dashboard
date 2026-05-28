@@ -104,6 +104,10 @@ export const companyChangeRequestsApi = {
       method: 'PATCH',
       body: JSON.stringify(data),
     }).then((res) => res.request),
+  timeline: (requestId: string) =>
+    req<{ timeline: CompanyChangeRequestTimelineEvent[] }>(
+      `/change-requests/${requestId}/timeline`,
+    ).then((res) => res.timeline),
 }
 
 // ── Types ─────────────────────────────────────────────────
@@ -180,4 +184,13 @@ export interface CompanyChangeRequest {
   created_at: string
   updated_at: string
   companies?: { id: string; name: string; status: string } | null
+}
+
+export interface CompanyChangeRequestTimelineEvent {
+  id: string
+  action: 'create' | 'update' | 'view' | 'delete' | 'login' | 'support_access' | 'ai_call'
+  old_data: Record<string, unknown> | null
+  new_data: Record<string, unknown> | null
+  actor_user_id: string | null
+  created_at: string
 }

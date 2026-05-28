@@ -1,6 +1,10 @@
 'use client'
 import { useEffect, useState } from 'react'
-import { companyChangeRequestsApi, CompanyChangeRequest } from '@/lib/api'
+import {
+  companyChangeRequestsApi,
+  CompanyChangeRequest,
+  CompanyChangeRequestTimelineEvent,
+} from '@/lib/api'
 
 export default function OwnerRequestsPage() {
   const [requests, setRequests] = useState<CompanyChangeRequest[]>([])
@@ -8,13 +12,26 @@ export default function OwnerRequestsPage() {
   const [workingId, setWorkingId] = useState<string | null>(null)
   const [ownerNote, setOwnerNote] = useState<Record<string, string>>({})
   const [error, setError] = useState('')
+  const [lastSync, setLastSync] = useState<Date | null>(null)
+  const [timelineByRequest, setTimelineByRequest] = useState<Record<string, CompanyChangeRequestTimelineEvent[]>>({})
 
   useEffect(() => {
+    load()
+    const id = window.setInterval(() => {
+      load()
+    }, 20000)
+    return () => window.clearInterval(id)
+  }, [])
+
+  async function load() {
     companyChangeRequestsApi
       .list()
-      .then(setRequests)
+      .then((data) => {
+        setRequests(data)
+        setLastSync(new Date())
+      })
       .finally(() => setLoading(false))
-  }, [])
+  }
 
   async function review(request: CompanyChangeRequest, decision: 'approved' | 'denied') {
     setWorkingId(request.id)
@@ -32,12 +49,23 @@ export default function OwnerRequestsPage() {
     }
   }
 
+  async function loadTimeline(requestId: string) {
+    const timeline = await companyChangeRequestsApi.timeline(requestId)
+    setTimelineByRequest((prev) => ({ ...prev, [requestId]: timeline }))
+  }
+
+  const pendingCount = requests.filter((request) => request.status === 'pending').length
+
   return (
     <div className="fade-in space-y-6">
       <div>
         <h1 className="text-xl font-semibold text-[var(--text)]">Company Change Requests</h1>
         <p className="mt-1 text-sm text-[var(--text-2)]">
           Review manager requests for reactivation and plan changes.
+        </p>
+        <p className="mt-1 text-xs text-[var(--text-3)]">
+          Pending {pendingCount} · Auto-sync every 20s
+          {lastSync ? ` · Last sync ${lastSync.toLocaleTimeString()}` : ''}
         </p>
       </div>
 
@@ -101,10 +129,23 @@ export default function OwnerRequestsPage() {
                       </button>
                     </div>
                   ) : (
-                    request.owner_note && (
-                      <p className="text-xs text-[var(--text-3)]">Owner note: {request.owner_note}</p>
-                    )
+                    request.owner_note && <p className="text-xs text-[var(--text-3)]">Owner note: {request.owner_note}</p>
                   )}
+                  <button
+                    onClick={() => loadTimeline(request.id)}
+                    className="text-xs text-[var(--green)] hover:underline"
+                  >
+                    View timeline
+                  </button>
+                  {timelineByRequest[request.id]?.length ? (
+                    <div className="rounded-lg bg-[var(--surface)] px-3 py-2">
+                      {timelineByRequest[request.id].map((event) => (
+                        <p key={event.id} className="text-xs text-[var(--text-3)]">
+                          {new Date(event.created_at).toLocaleString()} · {event.action}
+                        </p>
+                      ))}
+                    </div>
+                  ) : null}
                 </div>
               )
             })}
