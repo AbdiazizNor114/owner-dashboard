@@ -26,6 +26,18 @@ const STATUS_DOT: Record<string, string> = {
 const BLANK: UpdateCompanyInput = { name: '', industry: '', plan: 'free', status: 'trial' }
 const PLAN_OPTIONS: NonNullable<Company['plan']>[] = ['free', 'starter', 'pro', 'enterprise']
 const STATUS_OPTIONS: Company['status'][] = ['trial', 'active', 'past_due', 'restricted', 'cancelled']
+const INDUSTRY_OPTIONS = [
+  'Healthcare',
+  'Retail',
+  'Hospitality',
+  'Logistics',
+  'Cleaning Services',
+  'Construction',
+  'Security',
+  'Education',
+  'Manufacturing',
+  'Office / Professional Services',
+] as const
 
 const MANAGER_BLANK = { email: '' }
 
@@ -241,12 +253,16 @@ function CompaniesPageContent() {
               </div>
               <div>
                 <label className="block text-xs text-[var(--text-2)] mb-1.5">Industry</label>
-                <input
-                  value={form.industry}
+                <select
+                  value={form.industry || ''}
                   onChange={e => setForm(f => ({ ...f, industry: e.target.value }))}
-                  placeholder="Healthcare, Retail, etc."
-                  className="w-full bg-[var(--surface)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--text)] placeholder-[var(--text-3)] focus:outline-none focus:border-[var(--green)]"
-                />
+                  className="w-full bg-[var(--surface)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--text)] focus:outline-none focus:border-[var(--green)]"
+                >
+                  <option value="">Select industry</option>
+                  {INDUSTRY_OPTIONS.map((industry) => (
+                    <option key={industry} value={industry}>{industry}</option>
+                  ))}
+                </select>
               </div>
               <div>
                 <label className="block text-xs text-[var(--text-2)] mb-1.5">Plan</label>
@@ -363,12 +379,16 @@ function CompaniesPageContent() {
               </div>
               <div>
                 <label className="block text-xs text-[var(--text-2)] mb-1.5">Industry</label>
-                <input
-                  value={form.industry}
+                <select
+                  value={form.industry || ''}
                   onChange={e => setForm(f => ({ ...f, industry: e.target.value }))}
-                  placeholder="Healthcare, Retail, etc."
-                  className="w-full bg-[var(--surface)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--text)] placeholder-[var(--text-3)] focus:outline-none focus:border-[var(--blue)]"
-                />
+                  className="w-full bg-[var(--surface)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--text)] focus:outline-none focus:border-[var(--blue)]"
+                >
+                  <option value="">Select industry</option>
+                  {INDUSTRY_OPTIONS.map((industry) => (
+                    <option key={industry} value={industry}>{industry}</option>
+                  ))}
+                </select>
               </div>
               <div>
                 <label className="block text-xs text-[var(--text-2)] mb-1.5">Plan</label>
