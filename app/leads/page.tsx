@@ -11,6 +11,8 @@ export default function LeadsPage() {
   const [loading, setLoading] = useState(true)
   const [updatingId, setUpdatingId] = useState<string | null>(null)
   const [markingAll, setMarkingAll] = useState(false)
+  const [reviewingId, setReviewingId] = useState<string | null>(null)
+  const [inviteUrlByLead, setInviteUrlByLead] = useState<Record<string, string>>({})
 
   useEffect(() => {
     const token = localStorage.getItem('shaqonet_token')
@@ -39,6 +41,22 @@ export default function LeadsPage() {
   async function markLeadRead(leadId: string) {
     const updated = await leadsApi.markRead(leadId)
     setLeads((prev) => prev.map((lead) => (lead.id === leadId ? updated : lead)))
+  }
+
+  async function reviewLead(lead: LeadRequest, decision: 'approved' | 'denied') {
+    setReviewingId(lead.id)
+    try {
+      const result = await leadsApi.review(lead.id, { decision })
+      setLeads((prev) => prev.map((item) => (item.id === lead.id ? result.lead : item)))
+      if (decision === 'approved' && result.inviteUrl) {
+        setInviteUrlByLead((prev) => ({ ...prev, [lead.id]: result.inviteUrl! }))
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Could not review this lead right now.'
+      window.alert(message)
+    } finally {
+      setReviewingId(null)
+    }
   }
 
   async function markAllAsRead() {
@@ -77,11 +95,12 @@ export default function LeadsPage() {
       </div>
 
       <div className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--card)]">
-        <div className="grid grid-cols-[1.2fr_1fr_0.7fr_0.7fr] border-b border-[var(--border)] px-5 py-2.5 text-xs font-medium uppercase tracking-wider text-[var(--text-3)]">
+        <div className="grid grid-cols-[1.2fr_1fr_0.7fr_0.7fr_0.9fr] border-b border-[var(--border)] px-5 py-2.5 text-xs font-medium uppercase tracking-wider text-[var(--text-3)]">
           <div>Contact</div>
           <div>Company</div>
           <div>Status</div>
           <div>Received</div>
+          <div>Review</div>
         </div>
 
         {loading ? (
@@ -92,7 +111,7 @@ export default function LeadsPage() {
           <div className="divide-y divide-[var(--border)]">
             {leads.map((lead) => (
               <div key={lead.id} className="px-5 py-4">
-                <div className="grid grid-cols-[1.2fr_1fr_0.7fr_0.7fr] items-center gap-4">
+                <div className="grid grid-cols-[1.2fr_1fr_0.7fr_0.7fr_0.9fr] items-center gap-4">
                   <div>
                     <div className="flex items-center gap-2">
                       <p className="text-sm font-medium text-[var(--text)]">{lead.work_email}</p>
@@ -125,10 +144,41 @@ export default function LeadsPage() {
                   <div className="text-xs text-[var(--text-3)]">
                     {new Date(lead.created_at).toLocaleString()}
                   </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      disabled={reviewingId === lead.id || lead.status !== 'new'}
+                      onClick={() => reviewLead(lead, 'approved')}
+                      className="rounded-md bg-[var(--green)] px-2.5 py-1 text-xs font-semibold text-white disabled:opacity-50"
+                    >
+                      Accept
+                    </button>
+                    <button
+                      type="button"
+                      disabled={reviewingId === lead.id || lead.status !== 'new'}
+                      onClick={() => reviewLead(lead, 'denied')}
+                      className="rounded-md border border-[var(--border)] px-2.5 py-1 text-xs font-semibold text-[var(--text-2)] disabled:opacity-50"
+                    >
+                      Deny
+                    </button>
+                  </div>
                 </div>
                 <div className="mt-3 rounded-lg bg-[var(--surface)] px-3 py-2 text-sm text-[var(--text-2)]">
                   {lead.message?.trim() ? lead.message : 'No message provided.'}
                 </div>
+                {inviteUrlByLead[lead.id] ? (
+                  <div className="mt-2 rounded-lg border border-[var(--green)] border-opacity-30 bg-[var(--green-glow)] px-3 py-2 text-xs text-[var(--text)]">
+                    Manager invite created:
+                    <a
+                      href={inviteUrlByLead[lead.id]}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="ml-1 break-all font-medium text-[var(--green)] hover:underline"
+                    >
+                      {inviteUrlByLead[lead.id]}
+                    </a>
+                  </div>
+                ) : null}
                 {!lead.is_read_by_owner ? (
                   <button
                     type="button"

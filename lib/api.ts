@@ -93,6 +93,21 @@ export const leadsApi = {
       method: 'PATCH',
       body: JSON.stringify({ status }),
     }).then((res) => res.lead),
+  review: (
+    leadId: string,
+    data: { decision: 'approved' | 'denied'; managerEmail?: string; ownerNote?: string },
+  ) =>
+    req<{
+      lead: LeadRequest
+      decision: 'approved' | 'denied'
+      company?: Company
+      invitation?: InviteResponse['invitation']
+      inviteUrl?: string
+      emailDelivery?: { sent?: boolean; skipped?: boolean; reason?: string; id?: string } | null
+    }>(`/leads/${leadId}/review`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
 }
 
 export const companyChangeRequestsApi = {
