@@ -10,7 +10,9 @@ import {
   Inbox,
   LayoutDashboard,
   LogOut,
+  Menu,
   Settings,
+  X,
 } from 'lucide-react'
 
 const NAV = [
@@ -27,6 +29,11 @@ export default function OwnerSidebar() {
   const router = useRouter()
   const [leadUnreadCount, setLeadUnreadCount] = useState(0)
   const [requestUnreadCount, setRequestUnreadCount] = useState(0)
+  const [isOpen, setIsOpen] = useState(false)
+
+  useEffect(() => {
+    setIsOpen(false)
+  }, [path])
 
   useEffect(() => {
     let active = true
@@ -60,7 +67,36 @@ export default function OwnerSidebar() {
   }
 
   return (
-    <aside className="fixed left-0 top-0 z-30 flex h-screen w-56 flex-col border-r border-[var(--border)] bg-[var(--surface)]">
+    <>
+      <button
+        type="button"
+        onClick={() => setIsOpen(true)}
+        className="fixed left-3 top-3 z-40 inline-flex h-10 w-10 items-center justify-center rounded-xl border border-[var(--border)] bg-[var(--surface)] text-[var(--text)] shadow-sm lg:hidden"
+        aria-label="Open menu"
+      >
+        <Menu className="h-5 w-5" />
+      </button>
+      {isOpen ? (
+        <button
+          type="button"
+          aria-label="Close menu backdrop"
+          onClick={() => setIsOpen(false)}
+          className="fixed inset-0 z-40 bg-black/35 lg:hidden"
+        />
+      ) : null}
+      <aside
+        className={`fixed left-0 top-0 z-50 flex h-screen w-[84vw] max-w-72 flex-col border-r border-[var(--border)] bg-[var(--surface)] transition-transform duration-200 lg:z-30 lg:w-56 ${
+          isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
+        }`}
+      >
+        <button
+          type="button"
+          onClick={() => setIsOpen(false)}
+          className="absolute right-3 top-3 inline-flex h-8 w-8 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--surface)] text-[var(--text)] lg:hidden"
+          aria-label="Close menu"
+        >
+          <X className="h-4 w-4" />
+        </button>
       <div className="border-b border-[var(--border)] px-4 py-5">
         <Link href="/dashboard" className="flex h-12 items-center">
           <img src="/logos/shaqonet-logo-gold.svg" alt="ShaqoNet" className="h-9 w-auto max-w-[175px] object-contain" />
@@ -75,6 +111,7 @@ export default function OwnerSidebar() {
             <Link
               key={n.href}
               href={n.href}
+              onClick={() => setIsOpen(false)}
               className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all ${
                 active
                   ? 'border border-[#1d9e7525] bg-[var(--green-glow)] text-[var(--green)]'
@@ -111,6 +148,7 @@ export default function OwnerSidebar() {
           Sign out
         </button>
       </div>
-    </aside>
+      </aside>
+    </>
   )
 }

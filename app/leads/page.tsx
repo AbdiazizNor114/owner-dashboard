@@ -95,7 +95,7 @@ export default function LeadsPage() {
       </div>
 
       <div className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--card)]">
-        <div className="grid grid-cols-[1.2fr_1fr_0.7fr_0.7fr_0.9fr] border-b border-[var(--border)] px-5 py-2.5 text-xs font-medium uppercase tracking-wider text-[var(--text-3)]">
+        <div className="hidden grid-cols-[1.2fr_1fr_0.7fr_0.7fr_0.9fr] border-b border-[var(--border)] px-5 py-2.5 text-xs font-medium uppercase tracking-wider text-[var(--text-3)] md:grid">
           <div>Contact</div>
           <div>Company</div>
           <div>Status</div>
@@ -111,7 +111,7 @@ export default function LeadsPage() {
           <div className="divide-y divide-[var(--border)]">
             {leads.map((lead) => (
               <div key={lead.id} className="px-5 py-4">
-                <div className="grid grid-cols-[1.2fr_1fr_0.7fr_0.7fr_0.9fr] items-center gap-4">
+                <div className="grid gap-3 md:grid-cols-[1.2fr_1fr_0.7fr_0.7fr_0.9fr] md:items-center md:gap-4">
                   <div>
                     <div className="flex items-center gap-2">
                       <p className="text-sm font-medium text-[var(--text)]">{lead.work_email}</p>
@@ -124,6 +124,9 @@ export default function LeadsPage() {
                   <div>
                     <p className="text-sm text-[var(--text)]">{lead.company_name}</p>
                     <p className="text-xs text-[var(--text-3)]">{lead.team_size}</p>
+                  </div>
+                  <div className="md:hidden">
+                    <p className="text-[10px] uppercase tracking-wide text-[var(--text-3)]">Status</p>
                   </div>
                   <div>
                     <select
@@ -142,6 +145,7 @@ export default function LeadsPage() {
                     </select>
                   </div>
                   <div className="text-xs text-[var(--text-3)]">
+                    <p className="mb-1 text-[10px] uppercase tracking-wide text-[var(--text-3)] md:hidden">Received</p>
                     {new Date(lead.created_at).toLocaleString()}
                   </div>
                   <div className="flex items-center gap-2">

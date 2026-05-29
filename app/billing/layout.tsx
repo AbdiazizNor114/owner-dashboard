@@ -5,8 +5,8 @@ export default function BillingLayout({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-screen bg-[var(--bg)]">
       <OwnerSidebar />
-      <main className="ml-52 min-h-screen">
-        <div className="max-w-5xl mx-auto px-8 py-8">
+      <main className="min-h-screen lg:ml-56">
+        <div className="mx-auto max-w-5xl px-4 py-16 lg:px-8 lg:py-8">
           {children}
         </div>
       </main>
