@@ -98,8 +98,8 @@ export default function OwnerSidebar() {
           <X className="h-4 w-4" />
         </button>
       <div className="border-b border-[var(--border)] px-4 py-5">
-        <Link href="/dashboard" className="flex h-12 items-center">
-          <img src="/logos/shaqonet-logo-gold.svg" alt="ShaqoNet" className="h-9 w-auto max-w-[175px] object-contain" />
+        <Link href="/dashboard" className="flex h-12 min-w-0 items-center overflow-hidden">
+          <img src="/logos/shaqonet-logo-gold.svg" alt="ShaqoNet" className="h-9 max-w-full object-contain" />
         </Link>
       </div>
 
@@ -119,7 +119,7 @@ export default function OwnerSidebar() {
               }`}
             >
               <Icon className="h-4 w-4 shrink-0" strokeWidth={2.2} />
-              <span className="flex-1">{n.label}</span>
+              <span className="min-w-0 flex-1 truncate">{n.label}</span>
               {(n.href === '/leads' && leadUnreadCount > 0) || (n.href === '/requests' && requestUnreadCount > 0) ? (
                 <span className="rounded-full bg-[var(--red)] px-2 py-0.5 text-[10px] font-semibold text-white">
                   {n.href === '/leads' ? leadUnreadCount : requestUnreadCount}
@@ -135,9 +135,9 @@ export default function OwnerSidebar() {
           <div className="flex h-8 w-8 items-center justify-center rounded-full border border-[#1d9e7540] bg-[var(--green-glow)] text-xs font-bold text-[var(--green)]">
             O
           </div>
-          <div>
+          <div className="min-w-0">
             <p className="text-xs font-medium text-[var(--text)]">Owner</p>
-            <p className="text-xs text-[var(--text-3)]">Full access</p>
+            <p className="truncate text-xs text-[var(--text-3)]">Full access</p>
           </div>
         </div>
         <button
