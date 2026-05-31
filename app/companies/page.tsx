@@ -109,7 +109,13 @@ function CompaniesPageContent() {
     setFormError('')
     try {
       const created = await companiesApi.create({ name: form.name || '', industry: form.industry })
-      setCompanies(prev => [created, ...prev])
+      const finalized = await companiesApi.update(created.id, {
+        name: created.name,
+        industry: created.industry,
+        plan: form.plan || 'free',
+        status: form.status || 'trial',
+      })
+      setCompanies(prev => [finalized, ...prev])
       setForm(BLANK)
       setShowForm(false)
     } catch (err: unknown) {
@@ -144,6 +150,7 @@ function CompaniesPageContent() {
       setSelectedCompany(updated)
       setForm(BLANK)
       setShowEditForm(false)
+      await load()
     } catch (err: unknown) {
       setFormError(err instanceof Error ? err.message : 'Failed to update')
     } finally {
@@ -205,6 +212,7 @@ function CompaniesPageContent() {
       const updated = await companiesApi.update(company.id, updates)
       setCompanies(prev => prev.map(c => c.id === company.id ? updated : c))
       if (selectedCompany?.id === company.id) setSelectedCompany(updated)
+      await load()
     } catch (err: unknown) {
       setFormError(err instanceof Error ? err.message : `Failed to ${label.toLowerCase()}`)
     } finally {
