@@ -185,9 +185,14 @@ export default function OwnerRequestsPage() {
                   {timelineByRequest[request.id]?.length ? (
                     <div className="rounded-lg bg-[var(--surface)] px-3 py-2">
                       {timelineByRequest[request.id].map((event) => (
-                        <p key={event.id} className="text-xs text-[var(--text-3)]">
-                          {new Date(event.created_at).toLocaleString()} · {event.action}
-                        </p>
+                        <div key={event.id} className="py-1 text-xs text-[var(--text-3)]">
+                          <p className="font-medium text-[var(--text-2)]">
+                            {event.description || event.action.replace(/_/g, ' ')}
+                          </p>
+                          <p>
+                            {event.actorName || 'System'} · {new Date(event.created_at).toLocaleString()}
+                          </p>
+                        </div>
                       ))}
                     </div>
                   ) : null}

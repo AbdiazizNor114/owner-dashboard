@@ -217,8 +217,12 @@ export interface CompanyChangeRequest {
 export interface CompanyChangeRequestTimelineEvent {
   id: string
   action: 'create' | 'update' | 'view' | 'delete' | 'login' | 'support_access' | 'ai_call'
+  description?: string
+  actorName?: string
+  actorEmail?: string | null
   old_data: Record<string, unknown> | null
   new_data: Record<string, unknown> | null
   actor_user_id: string | null
+  actor_membership_id?: string | null
   created_at: string
 }
