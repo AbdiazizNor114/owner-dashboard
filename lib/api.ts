@@ -61,6 +61,8 @@ export const companiesApi = {
   update: (id: string, data: UpdateCompanyInput) =>
     req<{ company: Company }>(`/companies/${id}`, { method: 'PATCH', body: JSON.stringify(data) }).then(res => res.company),
   delete: (id: string) => req(`/companies/${id}`, { method: 'DELETE' }),
+  auditLogs: (id: string) =>
+    req<{ auditLogs: AuditLog[] }>(`/companies/${id}/audit-logs?limit=25`).then(res => res.auditLogs),
   inviteManager: (companyId: string, email: string) =>
     req<InviteResponse>(`/companies/${companyId}/invitations`, {
       method: 'POST',
@@ -225,4 +227,20 @@ export interface CompanyChangeRequestTimelineEvent {
   actor_user_id: string | null
   actor_membership_id?: string | null
   created_at: string
+}
+
+export interface AuditLog {
+  id: string
+  company_id: string
+  actor_user_id: string | null
+  actor_membership_id: string | null
+  action: string
+  entity_table: string
+  entity_id: string
+  old_data: Record<string, unknown> | null
+  new_data: Record<string, unknown> | null
+  created_at: string
+  description?: string
+  actorName?: string
+  actorEmail?: string | null
 }

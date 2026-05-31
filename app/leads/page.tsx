@@ -13,6 +13,7 @@ export default function LeadsPage() {
   const [markingAll, setMarkingAll] = useState(false)
   const [reviewingId, setReviewingId] = useState<string | null>(null)
   const [inviteUrlByLead, setInviteUrlByLead] = useState<Record<string, string>>({})
+  const [error, setError] = useState('')
 
   useEffect(() => {
     const token = localStorage.getItem('shaqonet_token')
@@ -45,6 +46,7 @@ export default function LeadsPage() {
 
   async function reviewLead(lead: LeadRequest, decision: 'approved' | 'denied') {
     setReviewingId(lead.id)
+    setError('')
     try {
       const result = await leadsApi.review(lead.id, { decision })
       setLeads((prev) => prev.map((item) => (item.id === lead.id ? result.lead : item)))
@@ -53,7 +55,7 @@ export default function LeadsPage() {
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not review this lead right now.'
-      window.alert(message)
+      setError(message)
     } finally {
       setReviewingId(null)
     }
@@ -92,6 +94,11 @@ export default function LeadsPage() {
         <p className="mt-0.5 text-sm text-[var(--text-2)]">
           New trial and contact requests from shaqonet.app
         </p>
+        {error ? (
+          <p className="mt-2 rounded-lg border border-[#e05a5a25] bg-[#e05a5a12] px-3 py-2 text-sm text-[var(--red)]">
+            {error}
+          </p>
+        ) : null}
       </div>
 
       <div className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--card)]">

@@ -9,6 +9,8 @@ import { SkeletonCard, SkeletonRow } from '@/components/Skeleton'
 import { BadgeDollarSign, Ban, CircleAlert, CircleDollarSign } from 'lucide-react'
 
 const PAID_PLANS: Array<NonNullable<Company['plan']>> = ['starter', 'pro', 'enterprise']
+const PLAN_OPTIONS: NonNullable<Company['plan']>[] = ['free', 'starter', 'pro', 'enterprise']
+const STATUS_OPTIONS: Company['status'][] = ['trial', 'active', 'past_due', 'restricted', 'cancelled']
 
 const PLAN_COLOR: Record<string, string> = {
   free: 'text-[var(--text-3)] bg-[var(--muted)]',
@@ -35,6 +37,8 @@ export default function BillingPage() {
   const router = useRouter()
   const [companies, setCompanies] = useState<Company[]>([])
   const [loading, setLoading] = useState(true)
+  const [updatingId, setUpdatingId] = useState<string | null>(null)
+  const [error, setError] = useState('')
 
   useEffect(() => {
     const token = localStorage.getItem('shaqonet_token')
@@ -48,6 +52,19 @@ export default function BillingPage() {
       .catch(() => setCompanies([]))
       .finally(() => setLoading(false))
   }, [router])
+
+  async function updateBillingCompany(company: Company, updates: Partial<Pick<Company, 'plan' | 'status'>>) {
+    setUpdatingId(company.id)
+    setError('')
+    try {
+      const updated = await companiesApi.update(company.id, updates)
+      setCompanies((current) => current.map((item) => (item.id === company.id ? updated : item)))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update company billing')
+    } finally {
+      setUpdatingId(null)
+    }
+  }
 
   const stats = useMemo(() => {
     const paying = companies.filter(company => company.status === 'active' && PAID_PLANS.includes(company.plan || 'free')).length
@@ -64,6 +81,7 @@ export default function BillingPage() {
         <div>
           <h1 className="text-xl font-semibold text-[var(--text)]">Billing</h1>
           <p className="text-sm text-[var(--text-2)] mt-0.5">Plan and payment status across companies</p>
+          {error ? <p className="mt-2 text-sm text-[var(--red)]">{error}</p> : null}
         </div>
         <Link href="/companies" className="px-4 py-2 bg-[var(--green)] hover:bg-[var(--green-dim)] text-white text-sm font-semibold rounded-lg transition-colors">
           Manage companies
@@ -123,11 +141,25 @@ export default function BillingPage() {
                   <p className="text-xs text-[var(--text-3)]">{company.industry || 'No industry'}</p>
                 </div>
                 <div>
-                  <span className={`text-xs font-semibold px-2 py-0.5 rounded-full capitalize ${PLAN_COLOR[company.plan || 'free']}`}>
-                    {company.plan || 'free'}
-                  </span>
+                  <select
+                    value={company.plan || 'free'}
+                    disabled={updatingId === company.id}
+                    onChange={(event) => updateBillingCompany(company, { plan: event.target.value as NonNullable<Company['plan']> })}
+                    className={`rounded-md border border-[var(--border)] px-2 py-1 text-xs font-semibold capitalize ${PLAN_COLOR[company.plan || 'free']}`}
+                  >
+                    {PLAN_OPTIONS.map((plan) => <option key={plan} value={plan}>{plan}</option>)}
+                  </select>
                 </div>
-                <div className={`text-sm capitalize ${STATUS_COLOR[company.status] || 'text-[var(--text-2)]'}`}>{company.status}</div>
+                <div>
+                  <select
+                    value={company.status}
+                    disabled={updatingId === company.id}
+                    onChange={(event) => updateBillingCompany(company, { status: event.target.value as Company['status'] })}
+                    className={`rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-xs capitalize ${STATUS_COLOR[company.status] || 'text-[var(--text-2)]'}`}
+                  >
+                    {STATUS_OPTIONS.map((status) => <option key={status} value={status}>{status}</option>)}
+                  </select>
+                </div>
                 <div className="text-sm text-[var(--text-2)]">{company.subscriptionStatus || 'none'}</div>
                 <div>
                   <p className="text-sm text-[var(--text-2)]">{formatSeatUsage(company)}</p>

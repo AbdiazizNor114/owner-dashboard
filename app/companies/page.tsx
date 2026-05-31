@@ -1,7 +1,7 @@
 'use client'
 import { Suspense, useEffect, useState } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
-import { companiesApi, Company, CreateCompanyInput, UpdateCompanyInput } from '@/lib/api'
+import { AuditLog, companiesApi, Company, UpdateCompanyInput } from '@/lib/api'
 import { Button } from '@/components/Button'
 import { EmptyState } from '@/components/EmptyState'
 import { SkeletonRow } from '@/components/Skeleton'
@@ -55,6 +55,8 @@ function CompaniesPageContent() {
   const [managerForm, setManagerForm] = useState(MANAGER_BLANK)
   const [managerInviteUrl, setManagerInviteUrl] = useState('')
   const [managerInviteNotice, setManagerInviteNotice] = useState('')
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>([])
+  const [auditLoading, setAuditLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [formError, setFormError] = useState('')
   const [managerFormError, setManagerFormError] = useState('')
@@ -92,8 +94,7 @@ function CompaniesPageContent() {
           setShowViewModal(true)
         }
       }
-    } catch (err) {
-      console.error('Error loading companies:', err)
+    } catch {
       setCompanies([])
     }
     finally { setLoading(false) }
@@ -173,6 +174,12 @@ function CompaniesPageContent() {
   function openViewModal(company: Company) {
     setSelectedCompany(company)
     setShowViewModal(true)
+    setAuditLogs([])
+    setAuditLoading(true)
+    companiesApi.auditLogs(company.id)
+      .then(setAuditLogs)
+      .catch(() => setAuditLogs([]))
+      .finally(() => setAuditLoading(false))
   }
 
   async function handleInviteManager(e: React.FormEvent) {
@@ -351,6 +358,28 @@ function CompaniesPageContent() {
                 <p className="text-xs text-[var(--text-3)] mb-1">Created</p>
                 <p className="text-sm text-[var(--text)]">{selectedCompany.createdAt ? new Date(selectedCompany.createdAt).toLocaleDateString() : '—'}</p>
               </div>
+              <div className="rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2">
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <p className="text-xs font-semibold text-[var(--text-2)]">Recent audit history</p>
+                  {auditLoading ? <span className="text-xs text-[var(--text-3)]">Loading...</span> : null}
+                </div>
+                {!auditLoading && auditLogs.length === 0 ? (
+                  <p className="text-xs text-[var(--text-3)]">No audit events yet.</p>
+                ) : (
+                  <div className="max-h-40 space-y-2 overflow-auto">
+                    {auditLogs.map((log) => (
+                      <div key={log.id} className="text-xs">
+                        <p className="font-medium text-[var(--text)]">
+                          {log.description || `${log.action} ${log.entity_table}`}
+                        </p>
+                        <p className="text-[var(--text-3)]">
+                          {log.actorName || 'System'} · {new Date(log.created_at).toLocaleString()}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
             <div className="flex gap-3 justify-end mt-6">
               <Button variant="secondary" onClick={() => setShowViewModal(false)}>
@@ -452,7 +481,7 @@ function CompaniesPageContent() {
                   placeholder="manager@company.com"
                   className="w-full bg-[var(--surface)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--text)] placeholder-[var(--text-3)] focus:outline-none focus:border-[var(--blue)]"
                 />
-                <p className="mt-1 text-xs text-[var(--text-3)]">They will choose their name, phone number, and password from the invite link.</p>
+                <p className="mt-1 text-xs text-[var(--text-3)]">They will choose their password from the invite link. The manager can complete name and phone after sign-in.</p>
               </div>
             </div>
             {managerFormError && (
@@ -514,10 +543,6 @@ function CompaniesPageContent() {
 
         {loading ? (
           <>
-            <div className="grid px-5 py-3 bg-[var(--surface)] border-b border-[var(--border)] text-xs font-medium text-[var(--text-3)] uppercase tracking-wider"
-                 style={{ gridTemplateColumns: '1fr 110px 110px 90px 80px 220px' }}>
-              <div>Company</div><div>Industry</div><div>Plan</div><div>Status</div><div>Employees</div><div></div>
-            </div>
             <SkeletonRow />
             <SkeletonRow />
             <SkeletonRow />
