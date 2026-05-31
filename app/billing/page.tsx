@@ -25,6 +25,12 @@ const STATUS_COLOR: Record<string, string> = {
   cancelled: 'text-[var(--text-3)]',
 }
 
+function formatSeatUsage(company: Company) {
+  const used = company.seatCount ?? ((company.employeeCount ?? 0) + (company.managerCount ?? 0) + (company.pendingInviteCount ?? 0))
+  if (company.seatLimit === null) return `${used} / unlimited`
+  return `${used} / ${company.seatLimit ?? 5}`
+}
+
 export default function BillingPage() {
   const router = useRouter()
   const [companies, setCompanies] = useState<Company[]>([])
@@ -48,7 +54,8 @@ export default function BillingPage() {
     const pastDue = companies.filter(company => company.status === 'past_due').length
     const cancelled = companies.filter(company => company.status === 'cancelled').length
     const freeOrTrial = companies.filter(company => company.status === 'trial' || (company.plan || 'free') === 'free').length
-    return { paying, pastDue, cancelled, freeOrTrial }
+    const atLimit = companies.filter(company => company.seatLimit !== null && (company.seatCount ?? 0) >= (company.seatLimit ?? 5)).length
+    return { paying, pastDue, cancelled, freeOrTrial, atLimit }
   }, [companies])
 
   return (
@@ -76,7 +83,7 @@ export default function BillingPage() {
             <StatCard label="Paying companies" value={stats.paying} sub="active paid plans" icon={<BadgeDollarSign className="h-4 w-4" />} color="text-[var(--green)]" />
             <StatCard label="Past due" value={stats.pastDue} sub="needs payment action" icon={<CircleAlert className="h-4 w-4" />} color="text-[var(--amber)]" />
             <StatCard label="Free / trial" value={stats.freeOrTrial} sub="not paying yet" icon={<CircleDollarSign className="h-4 w-4" />} />
-            <StatCard label="Cancelled" value={stats.cancelled} sub="preserved history" icon={<Ban className="h-4 w-4" />} color="text-[var(--red)]" />
+            <StatCard label="At seat limit" value={stats.atLimit} sub="upgrade candidates" icon={<Ban className="h-4 w-4" />} color="text-[var(--red)]" />
           </>
         )}
       </div>
@@ -90,8 +97,8 @@ export default function BillingPage() {
           <Link href="/companies" className="text-xs text-[var(--green)] hover:underline">Edit plans</Link>
         </div>
         <div className="grid px-5 py-3 bg-[var(--surface)] border-b border-[var(--border)] text-xs font-medium text-[var(--text-3)] uppercase tracking-wider"
-             style={{ gridTemplateColumns: '1fr 120px 120px 140px 80px' }}>
-          <div>Company</div><div>Plan</div><div>Status</div><div>Subscription</div><div></div>
+             style={{ gridTemplateColumns: '1fr 120px 120px 140px 130px 80px' }}>
+          <div>Company</div><div>Plan</div><div>Status</div><div>Subscription</div><div>Seats</div><div></div>
         </div>
         {loading ? (
           <>
@@ -110,7 +117,7 @@ export default function BillingPage() {
           <div className="divide-y divide-[var(--border)]">
             {companies.map(company => (
               <div key={company.id} className="grid items-center px-5 py-3.5 hover:bg-[var(--surface)] transition-colors"
-                   style={{ gridTemplateColumns: '1fr 120px 120px 140px 80px' }}>
+                   style={{ gridTemplateColumns: '1fr 120px 120px 140px 130px 80px' }}>
                 <div>
                   <p className="text-sm font-medium text-[var(--text)]">{company.name}</p>
                   <p className="text-xs text-[var(--text-3)]">{company.industry || 'No industry'}</p>
@@ -122,6 +129,12 @@ export default function BillingPage() {
                 </div>
                 <div className={`text-sm capitalize ${STATUS_COLOR[company.status] || 'text-[var(--text-2)]'}`}>{company.status}</div>
                 <div className="text-sm text-[var(--text-2)]">{company.subscriptionStatus || 'none'}</div>
+                <div>
+                  <p className="text-sm text-[var(--text-2)]">{formatSeatUsage(company)}</p>
+                  {(company.pendingInviteCount ?? 0) > 0 ? (
+                    <p className="text-xs text-[var(--text-3)]">{company.pendingInviteCount} pending</p>
+                  ) : null}
+                </div>
                 <Link href={`/companies?open=${company.id}`} className="text-xs text-[var(--green)] hover:underline text-right">
                   Open
                 </Link>

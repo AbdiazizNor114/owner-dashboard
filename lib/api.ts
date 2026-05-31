@@ -148,6 +148,9 @@ export interface Company {
   currentPeriodEnd?: string | null
   employeeCount?: number
   managerCount?: number
+  pendingInviteCount?: number
+  seatCount?: number
+  seatLimit?: number | null
   createdAt: string
   updatedAt: string
 }
