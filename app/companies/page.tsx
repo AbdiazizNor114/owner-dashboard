@@ -1,7 +1,7 @@
 'use client'
 import { Suspense, useEffect, useState } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
-import { AuditLog, companiesApi, Company, UpdateCompanyInput } from '@/lib/api'
+import { AuditLog, companiesApi, Company, CompanySetup, UpdateCompanyInput } from '@/lib/api'
 import { Button } from '@/components/Button'
 import { EmptyState } from '@/components/EmptyState'
 import { SkeletonRow } from '@/components/Skeleton'
@@ -61,6 +61,7 @@ function CompaniesPageContent() {
   const [formError, setFormError] = useState('')
   const [managerFormError, setManagerFormError] = useState('')
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [setupByCompany, setSetupByCompany] = useState<Record<string, CompanySetup>>({})
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<'all' | Company['status']>('all')
   const [planFilter, setPlanFilter] = useState<'all' | NonNullable<Company['plan']>>('all')
@@ -86,6 +87,20 @@ function CompaniesPageContent() {
     try {
       const data = await companiesApi.list()
       setCompanies(data)
+      Promise.all(
+        data.map(async (company) => {
+          const setup = await companiesApi.getSetup(company.id).catch(() => null)
+          if (!setup) return null
+          return { companyId: company.id, setup }
+        }),
+      ).then((entries) => {
+        const next: Record<string, CompanySetup> = {}
+        entries.forEach((entry) => {
+          if (!entry) return
+          next[entry.companyId] = entry.setup
+        })
+        setSetupByCompany(next)
+      })
       const openCompanyId = searchParams.get('open')
       if (openCompanyId) {
         const company = data.find((item) => item.id === openCompanyId)
@@ -537,8 +552,8 @@ function CompaniesPageContent() {
       {/* Table */}
       <div className="bg-[var(--card)] border border-[var(--border)] rounded-xl overflow-hidden">
         <div className="grid px-5 py-3 bg-[var(--surface)] border-b border-[var(--border)] text-xs font-medium text-[var(--text-3)] uppercase tracking-wider"
-             style={{ gridTemplateColumns: '1fr 110px 110px 90px 80px 220px' }}>
-          <div>Company</div><div>Industry</div><div>Plan</div><div>Status</div><div>Employees</div><div></div>
+             style={{ gridTemplateColumns: '1fr 110px 110px 90px 80px 120px 220px' }}>
+          <div>Company</div><div>Industry</div><div>Plan</div><div>Status</div><div>Employees</div><div>Setup</div><div></div>
         </div>
 
         {loading ? (
@@ -558,7 +573,7 @@ function CompaniesPageContent() {
           <div className="divide-y divide-[var(--border)]">
             {filtered.map(c => (
               <div key={c.id} className="grid items-center px-5 py-3.5 hover:bg-[var(--surface)] transition-colors"
-                   style={{ gridTemplateColumns: '1fr 110px 110px 90px 80px 220px' }}>
+                   style={{ gridTemplateColumns: '1fr 110px 110px 90px 80px 120px 220px' }}>
                 <div>
                   <p className="text-sm font-medium text-[var(--text)]">{c.name}</p>
                 </div>
@@ -570,6 +585,15 @@ function CompaniesPageContent() {
                 </div>
                 <div className={`text-xs font-medium capitalize ${STATUS_DOT[c.status]}`}>● {c.status}</div>
                 <div className="text-sm text-[var(--text-2)]">{c.employeeCount ?? 0}</div>
+                <div>
+                  {setupByCompany[c.id] ? (
+                    <span className="inline-flex rounded-full bg-[var(--green-glow)] px-2 py-0.5 text-xs font-semibold text-[var(--green)]">
+                      {setupByCompany[c.id].progress.completed}/{setupByCompany[c.id].progress.total}
+                    </span>
+                  ) : (
+                    <span className="text-xs text-[var(--text-3)]">—</span>
+                  )}
+                </div>
                 <div className="flex items-center gap-2 justify-end">
                   <Button variant="secondary" size="sm" onClick={() => openViewModal(c)}>
                     View

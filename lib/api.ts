@@ -72,6 +72,8 @@ export const companiesApi = {
     req<InviteResponse>(`/companies/${companyId}/invitations/${invitationId}/resend`, {
       method: 'POST',
     }),
+  getSetup: (companyId: string) =>
+    req<{ setup: CompanySetup }>(`/companies/${companyId}/setup/owner`).then((res) => res.setup),
 }
 
 // ── Health ────────────────────────────────────────────────
@@ -155,6 +157,24 @@ export interface Company {
   seatLimit?: number | null
   createdAt: string
   updatedAt: string
+}
+
+export interface CompanySetup {
+  locations: string[]
+  departments: string[]
+  staffRoles: string[]
+  setupChecklist: {
+    brandWorkspace: boolean
+    addLocations: boolean
+    addDepartments: boolean
+    addStaffRoles: boolean
+    inviteEmployees: boolean
+    createFirstSchedule: boolean
+  }
+  progress: {
+    completed: number
+    total: number
+  }
 }
 
 export interface CreateCompanyInput {
