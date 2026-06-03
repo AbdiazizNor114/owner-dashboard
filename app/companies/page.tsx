@@ -1,11 +1,11 @@
 'use client'
-import { Suspense, useEffect, useState } from 'react'
+import { Suspense, useEffect, useMemo, useState } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { AuditLog, companiesApi, Company, CompanySetup, UpdateCompanyInput } from '@/lib/api'
 import { Button } from '@/components/Button'
 import { EmptyState } from '@/components/EmptyState'
 import { SkeletonRow } from '@/components/Skeleton'
-import { Building2 } from 'lucide-react'
+import { AlertTriangle, Building2, CheckCircle2, RefreshCw, UsersRound } from 'lucide-react'
 
 const PLAN_COLOR: Record<string, string> = {
   free: 'text-[var(--text-3)] bg-[var(--muted)]',
@@ -41,6 +41,45 @@ const INDUSTRY_OPTIONS = [
 
 const MANAGER_BLANK = { email: '' }
 
+type AttentionFilter = 'all' | 'needs_action' | 'incomplete_setup' | 'seat_risk'
+
+function getSeatUsage(company: Company) {
+  const used = company.seatCount ?? ((company.employeeCount ?? 0) + (company.managerCount ?? 0) + (company.pendingInviteCount ?? 0))
+  const limit = company.seatLimit ?? 5
+  const unlimited = company.seatLimit === null
+  return {
+    used,
+    limit,
+    unlimited,
+    atLimit: !unlimited && used >= limit,
+    nearLimit: !unlimited && used >= Math.max(limit - 3, Math.ceil(limit * 0.85)),
+  }
+}
+
+function getSetupProgress(setup?: CompanySetup) {
+  if (!setup) return { completed: 0, total: 6, percent: 0, complete: false }
+  const total = setup.progress.total || 6
+  const completed = setup.progress.completed || 0
+  return {
+    completed,
+    total,
+    percent: Math.round((completed / total) * 100),
+    complete: completed >= total,
+  }
+}
+
+function getAttentionReason(company: Company, setup?: CompanySetup) {
+  const seats = getSeatUsage(company)
+  const setupProgress = getSetupProgress(setup)
+  if (company.status === 'past_due') return 'Past due'
+  if (company.status === 'restricted') return 'Restricted'
+  if (company.status === 'cancelled') return 'Cancelled'
+  if (seats.atLimit) return 'Seat limit reached'
+  if (seats.nearLimit) return 'Near seat limit'
+  if (!setupProgress.complete) return 'Setup incomplete'
+  return ''
+}
+
 function CompaniesPageContent() {
   const router = useRouter()
   const [companies, setCompanies] = useState<Company[]>([])
@@ -65,6 +104,9 @@ function CompaniesPageContent() {
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<'all' | Company['status']>('all')
   const [planFilter, setPlanFilter] = useState<'all' | NonNullable<Company['plan']>>('all')
+  const [attentionFilter, setAttentionFilter] = useState<AttentionFilter>('all')
+  const [pageError, setPageError] = useState('')
+  const [lastSync, setLastSync] = useState<Date | null>(null)
 
   const searchParams = useSearchParams()
 
@@ -84,23 +126,24 @@ function CompaniesPageContent() {
 
   async function load() {
     setLoading(true)
+    setPageError('')
     try {
       const data = await companiesApi.list()
       setCompanies(data)
-      Promise.all(
+      const setupEntries = await Promise.all(
         data.map(async (company) => {
           const setup = await companiesApi.getSetup(company.id).catch(() => null)
           if (!setup) return null
           return { companyId: company.id, setup }
         }),
-      ).then((entries) => {
-        const next: Record<string, CompanySetup> = {}
-        entries.forEach((entry) => {
-          if (!entry) return
-          next[entry.companyId] = entry.setup
-        })
-        setSetupByCompany(next)
+      )
+      const next: Record<string, CompanySetup> = {}
+      setupEntries.forEach((entry) => {
+        if (!entry) return
+        next[entry.companyId] = entry.setup
       })
+      setSetupByCompany(next)
+      setLastSync(new Date())
       const openCompanyId = searchParams.get('open')
       if (openCompanyId) {
         const company = data.find((item) => item.id === openCompanyId)
@@ -109,8 +152,10 @@ function CompaniesPageContent() {
           setShowViewModal(true)
         }
       }
-    } catch {
+    } catch (err) {
       setCompanies([])
+      setSetupByCompany({})
+      setPageError(err instanceof Error ? err.message : 'Failed to load companies')
     }
     finally { setLoading(false) }
   }
@@ -134,6 +179,7 @@ function CompaniesPageContent() {
       setCompanies(prev => [finalized, ...prev])
       setForm(BLANK)
       setShowForm(false)
+      await load()
     } catch (err: unknown) {
       setFormError(err instanceof Error ? err.message : 'Failed to create')
     } finally {
@@ -147,7 +193,9 @@ function CompaniesPageContent() {
     try {
       await companiesApi.delete(id)
       setCompanies(prev => prev.filter(c => c.id !== id))
-    } catch {}
+    } catch (err) {
+      setPageError(err instanceof Error ? err.message : 'Failed to delete company')
+    }
     finally { setDeletingId(null) }
   }
 
@@ -228,7 +276,12 @@ function CompaniesPageContent() {
   }
 
   async function updateLifecycle(company: Company, updates: UpdateCompanyInput, label: string) {
-    if (!confirm(`${label} "${company.name}"? Company data and audit history will be preserved.`)) return
+    const actionCopy: Record<string, string> = {
+      Restrict: `Restrict "${company.name}"? Managers keep history, but access should be limited until the issue is resolved.`,
+      Cancel: `Cancel "${company.name}"? Company data and audit history will be preserved, but workspace access should stop.`,
+      Reactivate: `Reactivate "${company.name}"? This restores the workspace to active access.`,
+    }
+    if (!confirm(actionCopy[label] ?? `${label} "${company.name}"? Company data and audit history will be preserved.`)) return
     setDeletingId(company.id)
     try {
       const updated = await companiesApi.update(company.id, updates)
@@ -242,25 +295,78 @@ function CompaniesPageContent() {
     }
   }
 
+  const stats = useMemo(() => {
+    const active = companies.filter((company) => company.status === 'active').length
+    const needsAction = companies.filter((company) => Boolean(getAttentionReason(company, setupByCompany[company.id]))).length
+    const setupComplete = companies.filter((company) => getSetupProgress(setupByCompany[company.id]).complete).length
+    const seatRisk = companies.filter((company) => {
+      const seats = getSeatUsage(company)
+      return seats.atLimit || seats.nearLimit
+    }).length
+    return { active, needsAction, setupComplete, seatRisk }
+  }, [companies, setupByCompany])
+
   const filtered = companies.filter(c => {
     const matchesSearch = c.name.toLowerCase().includes(search.toLowerCase()) ||
       (c.industry || '').toLowerCase().includes(search.toLowerCase())
     const matchesStatus = statusFilter === 'all' || c.status === statusFilter
     const matchesPlan = planFilter === 'all' || (c.plan || 'free') === planFilter
-    return matchesSearch && matchesStatus && matchesPlan
+    const setup = setupByCompany[c.id]
+    const attentionReason = getAttentionReason(c, setup)
+    const seats = getSeatUsage(c)
+    const setupProgress = getSetupProgress(setup)
+    const matchesAttention =
+      attentionFilter === 'all' ||
+      (attentionFilter === 'needs_action' && Boolean(attentionReason)) ||
+      (attentionFilter === 'incomplete_setup' && !setupProgress.complete) ||
+      (attentionFilter === 'seat_risk' && (seats.atLimit || seats.nearLimit))
+    return matchesSearch && matchesStatus && matchesPlan && matchesAttention
   })
 
   return (
-    <div className="fade-in">
+    <div className="fade-in space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h1 className="text-xl font-semibold text-[var(--text)]">Companies</h1>
-          <p className="text-sm text-[var(--text-2)] mt-0.5">{companies.length} total</p>
+          <p className="mt-0.5 text-sm text-[var(--text-2)]">{companies.length} total workspaces</p>
+          <p className="mt-1 text-xs text-[var(--text-3)]">
+            {lastSync ? `Last sync ${lastSync.toLocaleTimeString()}` : 'Not synced yet'}
+          </p>
         </div>
-        <Button onClick={() => { setShowForm(true); setFormError('') }}>
-          + Add company
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="secondary" onClick={load} disabled={loading} aria-label="Refresh companies" title="Refresh companies">
+            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+          </Button>
+          <Button onClick={() => { setShowForm(true); setFormError('') }}>
+            + Add company
+          </Button>
+        </div>
+      </div>
+
+      {pageError ? (
+        <div className="rounded-xl border border-[#e05a5a25] bg-[#e05a5a12] px-4 py-3 text-sm text-[var(--red)]">
+          {pageError}
+        </div>
+      ) : null}
+
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-4">
+          <p className="text-xs font-medium text-[var(--text-2)]">Active companies</p>
+          <p className="mt-2 text-2xl font-semibold text-[var(--green)]">{loading ? '--' : stats.active}</p>
+        </div>
+        <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-4">
+          <p className="text-xs font-medium text-[var(--text-2)]">Need action</p>
+          <p className="mt-2 text-2xl font-semibold text-[var(--amber)]">{loading ? '--' : stats.needsAction}</p>
+        </div>
+        <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-4">
+          <p className="text-xs font-medium text-[var(--text-2)]">Setup complete</p>
+          <p className="mt-2 text-2xl font-semibold text-[var(--blue)]">{loading ? '--' : stats.setupComplete}</p>
+        </div>
+        <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-4">
+          <p className="text-xs font-medium text-[var(--text-2)]">Seat risk</p>
+          <p className="mt-2 text-2xl font-semibold text-[var(--red)]">{loading ? '--' : stats.seatRisk}</p>
+        </div>
       </div>
 
       {/* Add company form */}
@@ -333,47 +439,73 @@ function CompaniesPageContent() {
       {/* View company modal */}
       {showViewModal && selectedCompany && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-[var(--card)] border border-[var(--border)] rounded-xl p-6 w-full max-w-md slide-in">
+          <div className="max-h-[90vh] w-full max-w-3xl overflow-auto rounded-xl border border-[var(--border)] bg-[var(--card)] p-6 slide-in">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-sm font-semibold text-[var(--text)]">{selectedCompany.name}</h2>
-              <button onClick={() => setShowViewModal(false)} className="text-[var(--text-3)] hover:text-[var(--text)] text-lg">✕</button>
-            </div>
-            <div className="space-y-3">
               <div>
+                <h2 className="text-lg font-semibold text-[var(--text)]">{selectedCompany.name}</h2>
+                <p className="text-xs text-[var(--text-3)]">{getAttentionReason(selectedCompany, setupByCompany[selectedCompany.id]) || 'No urgent owner action'}</p>
+              </div>
+              <button type="button" aria-label="Close company details" onClick={() => setShowViewModal(false)} className="text-[var(--text-3)] hover:text-[var(--text)] text-lg">✕</button>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2">
                 <p className="text-xs text-[var(--text-3)] mb-1">Company name</p>
                 <p className="text-sm text-[var(--text)]">{selectedCompany.name}</p>
               </div>
-              <div>
+              <div className="rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2">
                 <p className="text-xs text-[var(--text-3)] mb-1">Industry</p>
                 <p className="text-sm text-[var(--text)]">{selectedCompany.industry || '—'}</p>
               </div>
-              <div>
+              <div className="rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2">
                 <p className="text-xs text-[var(--text-3)] mb-1">Status</p>
                 <div className={`text-xs font-medium capitalize ${STATUS_DOT[selectedCompany.status]}`}>● {selectedCompany.status}</div>
               </div>
-              <div>
+              <div className="rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2">
                 <p className="text-xs text-[var(--text-3)] mb-1">Plan</p>
                 <span className={`text-xs font-semibold px-2 py-0.5 rounded-full capitalize ${PLAN_COLOR[selectedCompany.plan || 'free']}`}>
                   {selectedCompany.plan || 'free'}
                 </span>
               </div>
-              <div>
+              <div className="rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2">
                 <p className="text-xs text-[var(--text-3)] mb-1">Subscription</p>
                 <p className="text-sm text-[var(--text)]">{selectedCompany.subscriptionStatus || 'No subscription'}</p>
               </div>
-              <div>
-                <p className="text-xs text-[var(--text-3)] mb-1">Employees</p>
-                <p className="text-sm text-[var(--text)]">{selectedCompany.employeeCount ?? 0}</p>
+              <div className="rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2">
+                <p className="text-xs text-[var(--text-3)] mb-1">Seats</p>
+                {(() => {
+                  const seats = getSeatUsage(selectedCompany)
+                  return (
+                    <p className={`text-sm ${seats.atLimit ? 'font-semibold text-[var(--red)]' : seats.nearLimit ? 'font-semibold text-[var(--amber)]' : 'text-[var(--text)]'}`}>
+                      {seats.unlimited ? `${seats.used} / unlimited` : `${seats.used} / ${seats.limit}`}
+                    </p>
+                  )
+                })()}
               </div>
-              <div>
-                <p className="text-xs text-[var(--text-3)] mb-1">Managers</p>
-                <p className="text-sm text-[var(--text)]">{selectedCompany.managerCount ?? 0}</p>
+              <div className="rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2">
+                <p className="text-xs text-[var(--text-3)] mb-1">People</p>
+                <p className="text-sm text-[var(--text)]">{selectedCompany.employeeCount ?? 0} employees · {selectedCompany.managerCount ?? 0} managers</p>
               </div>
-              <div>
+              <div className="rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2">
                 <p className="text-xs text-[var(--text-3)] mb-1">Created</p>
                 <p className="text-sm text-[var(--text)]">{selectedCompany.createdAt ? new Date(selectedCompany.createdAt).toLocaleDateString() : '—'}</p>
               </div>
-              <div className="rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2">
+              <div className="rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 sm:col-span-2">
+                {(() => {
+                  const setup = getSetupProgress(setupByCompany[selectedCompany.id])
+                  return (
+                    <>
+                      <div className="mb-2 flex items-center justify-between">
+                        <p className="text-xs font-semibold text-[var(--text-2)]">Setup progress</p>
+                        <p className="text-xs text-[var(--text-3)]">{setup.completed}/{setup.total}</p>
+                      </div>
+                      <div className="h-2 overflow-hidden rounded-full bg-[var(--muted)]">
+                        <div className="h-full rounded-full bg-[var(--green)]" style={{ width: `${setup.percent}%` }} />
+                      </div>
+                    </>
+                  )
+                })()}
+              </div>
+              <div className="rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 sm:col-span-2">
                 <div className="mb-2 flex items-center justify-between gap-2">
                   <p className="text-xs font-semibold text-[var(--text-2)]">Recent audit history</p>
                   {auditLoading ? <span className="text-xs text-[var(--text-3)]">Loading...</span> : null}
@@ -396,7 +528,7 @@ function CompaniesPageContent() {
                 )}
               </div>
             </div>
-            <div className="flex gap-3 justify-end mt-6">
+            <div className="flex flex-wrap gap-3 justify-end mt-6">
               <Button variant="secondary" onClick={() => setShowViewModal(false)}>
                 Close
               </Button>
@@ -547,13 +679,23 @@ function CompaniesPageContent() {
           <option value="all">All plans</option>
           {PLAN_OPTIONS.map(plan => <option key={plan} value={plan}>{plan}</option>)}
         </select>
+        <select
+          value={attentionFilter}
+          onChange={e => setAttentionFilter(e.target.value as AttentionFilter)}
+          className="bg-[var(--card)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--text)]"
+        >
+          <option value="all">All attention</option>
+          <option value="needs_action">Needs action</option>
+          <option value="incomplete_setup">Incomplete setup</option>
+          <option value="seat_risk">Seat risk</option>
+        </select>
       </div>
 
       {/* Table */}
       <div className="bg-[var(--card)] border border-[var(--border)] rounded-xl overflow-hidden">
-        <div className="grid px-5 py-3 bg-[var(--surface)] border-b border-[var(--border)] text-xs font-medium text-[var(--text-3)] uppercase tracking-wider"
-             style={{ gridTemplateColumns: '1fr 110px 110px 90px 80px 120px 220px' }}>
-          <div>Company</div><div>Industry</div><div>Plan</div><div>Status</div><div>Employees</div><div>Setup</div><div></div>
+        <div className="hidden px-5 py-3 bg-[var(--surface)] border-b border-[var(--border)] text-xs font-medium text-[var(--text-3)] uppercase tracking-wider lg:grid"
+             style={{ gridTemplateColumns: 'minmax(0,1fr) 110px 110px 110px 120px 120px 220px' }}>
+          <div>Company</div><div>Industry</div><div>Plan</div><div>Status</div><div>Seats</div><div>Setup</div><div></div>
         </div>
 
         {loading ? (
@@ -572,10 +714,13 @@ function CompaniesPageContent() {
         ) : (
           <div className="divide-y divide-[var(--border)]">
             {filtered.map(c => (
-              <div key={c.id} className="grid items-center px-5 py-3.5 hover:bg-[var(--surface)] transition-colors"
-                   style={{ gridTemplateColumns: '1fr 110px 110px 90px 80px 120px 220px' }}>
+              <div key={c.id} className="flex flex-col gap-3 px-5 py-3.5 transition-colors hover:bg-[var(--surface)] lg:grid lg:items-center"
+                   style={{ gridTemplateColumns: 'minmax(0,1fr) 110px 110px 110px 120px 120px 220px' }}>
                 <div>
                   <p className="text-sm font-medium text-[var(--text)]">{c.name}</p>
+                  {getAttentionReason(c, setupByCompany[c.id]) ? (
+                    <p className="mt-1 text-xs text-[var(--amber)]">{getAttentionReason(c, setupByCompany[c.id])}</p>
+                  ) : null}
                 </div>
                 <div className="text-xs text-[var(--text-2)]">{c.industry || '—'}</div>
                 <div>
@@ -584,17 +729,32 @@ function CompaniesPageContent() {
                   </span>
                 </div>
                 <div className={`text-xs font-medium capitalize ${STATUS_DOT[c.status]}`}>● {c.status}</div>
-                <div className="text-sm text-[var(--text-2)]">{c.employeeCount ?? 0}</div>
+                <div>
+                  {(() => {
+                    const seats = getSeatUsage(c)
+                    return (
+                      <p className={`text-sm ${seats.atLimit ? 'font-semibold text-[var(--red)]' : seats.nearLimit ? 'font-semibold text-[var(--amber)]' : 'text-[var(--text-2)]'}`}>
+                        {seats.unlimited ? `${seats.used} / ∞` : `${seats.used} / ${seats.limit}`}
+                      </p>
+                    )
+                  })()}
+                </div>
                 <div>
                   {setupByCompany[c.id] ? (
-                    <span className="inline-flex rounded-full bg-[var(--green-glow)] px-2 py-0.5 text-xs font-semibold text-[var(--green)]">
-                      {setupByCompany[c.id].progress.completed}/{setupByCompany[c.id].progress.total}
-                    </span>
+                    (() => {
+                      const setup = getSetupProgress(setupByCompany[c.id])
+                      return (
+                        <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold ${setup.complete ? 'bg-[var(--green-glow)] text-[var(--green)]' : 'bg-[#d98f2e18] text-[var(--amber)]'}`}>
+                          {setup.complete ? <CheckCircle2 className="h-3 w-3" /> : <AlertTriangle className="h-3 w-3" />}
+                          {setup.completed}/{setup.total}
+                        </span>
+                      )
+                    })()
                   ) : (
                     <span className="text-xs text-[var(--text-3)]">—</span>
                   )}
                 </div>
-                <div className="flex items-center gap-2 justify-end">
+                <div className="flex flex-wrap items-center gap-2 justify-end">
                   <Button variant="secondary" size="sm" onClick={() => openViewModal(c)}>
                     View
                   </Button>
