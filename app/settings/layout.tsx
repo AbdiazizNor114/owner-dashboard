@@ -1,6 +1,6 @@
 import OwnerShell from '@/components/layout/OwnerShell'
 import { ReactNode } from 'react'
 
-export default function DashboardLayout({ children }: { children: ReactNode }) {
+export default function SettingsLayout({ children }: { children: ReactNode }) {
   return <OwnerShell>{children}</OwnerShell>
 }

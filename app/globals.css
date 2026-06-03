@@ -17,6 +17,7 @@
   --text-2:   #9aa0ab;
   --text-3:   #5a6070;
   --red:      #e05a5a;
+  --red-dim:  #b84444;
   --amber:    #d98f2e;
   --blue:     #4f8ef7;
 }
@@ -33,6 +34,28 @@ body {
 }
 
 code, .mono { font-family: 'DM Mono', monospace; }
+
+.skip-link {
+  position: fixed;
+  left: 1rem;
+  top: 1rem;
+  z-index: 80;
+  transform: translateY(-150%);
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  background: var(--surface);
+  color: var(--text);
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  transition: transform 0.15s ease;
+}
+
+.skip-link:focus {
+  transform: translateY(0);
+  outline: 2px solid var(--green);
+  outline-offset: 2px;
+}
 
 /* scrollbar */
 ::-webkit-scrollbar { width: 4px; height: 4px; }

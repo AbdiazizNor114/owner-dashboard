@@ -89,6 +89,7 @@ export default function OwnerSidebar() {
         />
       ) : null}
       <aside
+        aria-label="Owner navigation"
         className={`fixed left-0 top-0 z-50 flex h-screen w-[84vw] max-w-72 flex-col border-r border-[var(--border)] bg-[var(--surface)] transition-transform duration-200 lg:z-30 lg:w-56 ${
           isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
         }`}
@@ -107,7 +108,7 @@ export default function OwnerSidebar() {
         </Link>
       </div>
 
-      <nav className="flex-1 space-y-1 px-3 py-4">
+      <nav aria-label="Primary owner navigation" className="flex-1 space-y-1 px-3 py-4">
         {NAV.map(n => {
           const active = path === n.href || path.startsWith(n.href + '/')
           const Icon = n.icon
@@ -116,6 +117,7 @@ export default function OwnerSidebar() {
               key={n.href}
               href={n.href}
               onClick={() => setIsOpen(false)}
+              aria-current={active ? 'page' : undefined}
               className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all ${
                 active
                   ? 'border border-[#1d9e7525] bg-[var(--green-glow)] text-[var(--green)]'
