@@ -54,10 +54,12 @@ export default function OwnerSidebar() {
     }
     loadUnread()
     const id = window.setInterval(loadUnread, 20000)
+    window.addEventListener('shaqonet:owner-leads-read-updated', loadUnread)
     window.addEventListener('shaqonet:owner-requests-read-updated', loadUnread)
     return () => {
       active = false
       window.clearInterval(id)
+      window.removeEventListener('shaqonet:owner-leads-read-updated', loadUnread)
       window.removeEventListener('shaqonet:owner-requests-read-updated', loadUnread)
     }
   }, [])

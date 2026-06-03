@@ -5,6 +5,10 @@ import { leadsApi, LeadRequest } from '@/lib/api'
 
 const STATUS_OPTIONS: LeadRequest['status'][] = ['new', 'contacted', 'closed']
 
+function notifyLeadReadChange() {
+  window.dispatchEvent(new CustomEvent('shaqonet:owner-leads-read-updated'))
+}
+
 export default function LeadsPage() {
   const router = useRouter()
   const [leads, setLeads] = useState<LeadRequest[]>([])
@@ -12,8 +16,10 @@ export default function LeadsPage() {
   const [updatingId, setUpdatingId] = useState<string | null>(null)
   const [markingAll, setMarkingAll] = useState(false)
   const [reviewingId, setReviewingId] = useState<string | null>(null)
+  const [markingLeadId, setMarkingLeadId] = useState<string | null>(null)
   const [inviteUrlByLead, setInviteUrlByLead] = useState<Record<string, string>>({})
   const [error, setError] = useState('')
+  const [lastSync, setLastSync] = useState<Date | null>(null)
 
   useEffect(() => {
     const token = localStorage.getItem('shaqonet_token')
@@ -22,26 +28,49 @@ export default function LeadsPage() {
       return
     }
 
-    leadsApi
-      .list()
-      .then((items) => setLeads(items))
-      .catch(() => setLeads([]))
-      .finally(() => setLoading(false))
+    load()
   }, [router])
+
+  async function load() {
+    setLoading(true)
+    setError('')
+    try {
+      const items = await leadsApi.list()
+      setLeads(items)
+      setLastSync(new Date())
+    } catch (err) {
+      setLeads([])
+      setError(err instanceof Error ? err.message : 'Failed to load lead requests')
+    } finally {
+      setLoading(false)
+    }
+  }
 
   async function handleStatusChange(leadId: string, status: LeadRequest['status']) {
     setUpdatingId(leadId)
+    setError('')
     try {
       const updated = await leadsApi.updateStatus(leadId, status)
       setLeads((prev) => prev.map((lead) => (lead.id === leadId ? updated : lead)))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update lead status')
     } finally {
       setUpdatingId(null)
     }
   }
 
   async function markLeadRead(leadId: string) {
-    const updated = await leadsApi.markRead(leadId)
-    setLeads((prev) => prev.map((lead) => (lead.id === leadId ? updated : lead)))
+    setMarkingLeadId(leadId)
+    setError('')
+    try {
+      const updated = await leadsApi.markRead(leadId)
+      setLeads((prev) => prev.map((lead) => (lead.id === leadId ? updated : lead)))
+      notifyLeadReadChange()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to mark lead as read')
+    } finally {
+      setMarkingLeadId(null)
+    }
   }
 
   async function reviewLead(lead: LeadRequest, decision: 'approved' | 'denied') {
@@ -50,6 +79,7 @@ export default function LeadsPage() {
     try {
       const result = await leadsApi.review(lead.id, { decision })
       setLeads((prev) => prev.map((item) => (item.id === lead.id ? result.lead : item)))
+      notifyLeadReadChange()
       if (decision === 'approved' && result.inviteUrl) {
         setInviteUrlByLead((prev) => ({ ...prev, [lead.id]: result.inviteUrl! }))
       }
@@ -65,43 +95,63 @@ export default function LeadsPage() {
     const unread = leads.filter((lead) => !lead.is_read_by_owner)
     if (unread.length === 0) return
     setMarkingAll(true)
+    setError('')
     try {
-      await Promise.all(unread.map((lead) => leadsApi.markRead(lead.id).catch(() => null)))
+      const results = await Promise.allSettled(unread.map((lead) => leadsApi.markRead(lead.id)))
+      const failed = results.filter((result) => result.status === 'rejected').length
       setLeads((prev) =>
         prev.map((lead) => ({ ...lead, is_read_by_owner: true, read_by_owner_at: lead.read_by_owner_at ?? new Date().toISOString() })),
       )
+      notifyLeadReadChange()
+      if (failed > 0) {
+        setError(`${failed} lead${failed === 1 ? '' : 's'} could not be marked read.`)
+      }
+      await load()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to mark leads as read')
     } finally {
       setMarkingAll(false)
     }
   }
 
   const unreadCount = leads.filter((lead) => !lead.is_read_by_owner).length
+  const newCount = leads.filter((lead) => lead.status === 'new').length
 
   return (
-    <div className="fade-in">
-      <div className="mb-8">
-        <div className="flex items-center justify-between gap-3">
+    <div className="fade-in space-y-6">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div>
           <h1 className="text-xl font-semibold text-[var(--text)]">Lead Requests</h1>
-          <button
-            type="button"
-            onClick={markAllAsRead}
-            disabled={markingAll || unreadCount === 0}
-            className="rounded-md border border-[var(--border)] px-3 py-1.5 text-xs font-medium text-[var(--text-2)] disabled:opacity-50"
-          >
-            {markingAll ? 'Marking...' : `Mark all as read${unreadCount > 0 ? ` (${unreadCount})` : ''}`}
-          </button>
-        </div>
-        <p className="mt-0.5 text-sm text-[var(--text-2)]">
-          New trial and contact requests from shaqonet.app
-        </p>
-        {error ? (
-          <p className="mt-2 rounded-lg border border-[#e05a5a25] bg-[#e05a5a12] px-3 py-2 text-sm text-[var(--red)]">
-            {error}
+          <p className="mt-1 max-w-2xl text-sm text-[var(--text-2)]">
+            New trial and contact requests from shaqonet.app.
           </p>
-        ) : null}
+          <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-[var(--text-3)]">
+            <span className="rounded-full border border-[var(--border)] bg-[var(--surface)] px-2.5 py-1">
+              {newCount} new
+            </span>
+            <span className="rounded-full border border-[var(--border)] bg-[var(--surface)] px-2.5 py-1">
+              {unreadCount} unread
+            </span>
+            <span>{lastSync ? `Last sync ${lastSync.toLocaleTimeString()}` : 'Not synced yet'}</span>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={markAllAsRead}
+          disabled={markingAll || unreadCount === 0}
+          className="inline-flex h-9 items-center justify-center rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 text-xs font-medium text-[var(--text-2)] transition-colors hover:bg-[var(--muted)] disabled:opacity-50"
+        >
+          {markingAll ? 'Marking...' : `Mark all read${unreadCount > 0 ? ` (${unreadCount})` : ''}`}
+        </button>
       </div>
 
-      <div className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--card)]">
+      {error ? (
+        <div className="rounded-xl border border-[#e05a5a25] bg-[#e05a5a12] px-4 py-3 text-sm text-[var(--red)]">
+          {error}
+        </div>
+      ) : null}
+
+      <section className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--card)] shadow-sm">
         <div className="hidden grid-cols-[1.2fr_1fr_0.7fr_0.7fr_0.9fr] border-b border-[var(--border)] px-5 py-2.5 text-xs font-medium uppercase tracking-wider text-[var(--text-3)] md:grid">
           <div>Contact</div>
           <div>Company</div>
@@ -111,9 +161,21 @@ export default function LeadsPage() {
         </div>
 
         {loading ? (
-          <div className="px-5 py-8 text-sm text-[var(--text-3)]">Loading leads...</div>
+          <div className="space-y-3 px-5 py-5">
+            {[1, 2, 3].map((item) => (
+              <div key={item} className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4">
+                <div className="h-4 w-44 animate-pulse rounded bg-[var(--muted)]" />
+                <div className="mt-3 h-3 w-full max-w-md animate-pulse rounded bg-[var(--muted)]" />
+              </div>
+            ))}
+          </div>
         ) : leads.length === 0 ? (
-          <div className="px-5 py-8 text-sm text-[var(--text-3)]">No lead requests yet.</div>
+          <div className="px-5 py-10 text-center">
+            <p className="text-sm font-semibold text-[var(--text)]">No lead requests yet</p>
+            <p className="mx-auto mt-1 max-w-md text-sm text-[var(--text-3)]">
+              New trial and contact requests will appear here.
+            </p>
+          </div>
         ) : (
           <div className="divide-y divide-[var(--border)]">
             {leads.map((lead) => (
@@ -194,16 +256,17 @@ export default function LeadsPage() {
                   <button
                     type="button"
                     onClick={() => markLeadRead(lead.id)}
-                    className="mt-2 text-xs font-medium text-[var(--green)] hover:underline"
+                    disabled={markingLeadId === lead.id}
+                    className="mt-2 text-xs font-medium text-[var(--green)] hover:underline disabled:opacity-50"
                   >
-                    Mark as read
+                    {markingLeadId === lead.id ? 'Marking...' : 'Mark as read'}
                   </button>
                 ) : null}
               </div>
             ))}
           </div>
         )}
-      </div>
+      </section>
     </div>
   )
 }
