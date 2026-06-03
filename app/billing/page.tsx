@@ -3,10 +3,11 @@ import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { companiesApi, Company } from '@/lib/api'
+import { Button } from '@/components/Button'
 import { EmptyState } from '@/components/EmptyState'
 import { StatCard } from '@/components/StatCard'
 import { SkeletonCard, SkeletonRow } from '@/components/Skeleton'
-import { BadgeDollarSign, Ban, CircleAlert, CircleDollarSign } from 'lucide-react'
+import { ArrowUpRight, BadgeDollarSign, Ban, CircleAlert, CircleDollarSign, RefreshCw } from 'lucide-react'
 
 const PAID_PLANS: Array<NonNullable<Company['plan']>> = ['starter', 'pro', 'enterprise']
 const PLAN_OPTIONS: NonNullable<Company['plan']>[] = ['free', 'starter', 'pro', 'enterprise']
@@ -33,12 +34,36 @@ function formatSeatUsage(company: Company) {
   return `${used} / ${company.seatLimit ?? 5}`
 }
 
+function getSeatUsage(company: Company) {
+  const used = company.seatCount ?? ((company.employeeCount ?? 0) + (company.managerCount ?? 0) + (company.pendingInviteCount ?? 0))
+  const limit = company.seatLimit ?? 5
+  const isUnlimited = company.seatLimit === null
+  return {
+    used,
+    limit,
+    isUnlimited,
+    atLimit: !isUnlimited && used >= limit,
+    nearLimit: !isUnlimited && used >= Math.max(limit - 3, Math.ceil(limit * 0.85)),
+  }
+}
+
+function getAttentionReason(company: Company) {
+  const seats = getSeatUsage(company)
+  if (company.status === 'past_due') return 'Payment is past due'
+  if (company.status === 'restricted') return 'Workspace is restricted'
+  if (company.status === 'cancelled') return 'Workspace is cancelled'
+  if (seats.atLimit) return 'Seat limit reached'
+  if (seats.nearLimit) return 'Near seat limit'
+  return ''
+}
+
 export default function BillingPage() {
   const router = useRouter()
   const [companies, setCompanies] = useState<Company[]>([])
   const [loading, setLoading] = useState(true)
   const [updatingId, setUpdatingId] = useState<string | null>(null)
   const [error, setError] = useState('')
+  const [lastSync, setLastSync] = useState<Date | null>(null)
 
   useEffect(() => {
     const token = localStorage.getItem('shaqonet_token')
@@ -47,11 +72,23 @@ export default function BillingPage() {
       return
     }
 
-    companiesApi.list()
-      .then(setCompanies)
-      .catch(() => setCompanies([]))
-      .finally(() => setLoading(false))
+    load()
   }, [router])
+
+  async function load() {
+    setLoading(true)
+    setError('')
+    try {
+      const data = await companiesApi.list()
+      setCompanies(data)
+      setLastSync(new Date())
+    } catch (err) {
+      setCompanies([])
+      setError(err instanceof Error ? err.message : 'Failed to load billing data')
+    } finally {
+      setLoading(false)
+    }
+  }
 
   async function updateBillingCompany(company: Company, updates: Partial<Pick<Company, 'plan' | 'status'>>) {
     setUpdatingId(company.id)
@@ -59,6 +96,7 @@ export default function BillingPage() {
     try {
       const updated = await companiesApi.update(company.id, updates)
       setCompanies((current) => current.map((item) => (item.id === company.id ? updated : item)))
+      setLastSync(new Date())
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update company billing')
     } finally {
@@ -75,20 +113,41 @@ export default function BillingPage() {
     return { paying, pastDue, cancelled, freeOrTrial, atLimit }
   }, [companies])
 
+  const attentionCompanies = useMemo(
+    () => companies
+      .map((company) => ({ company, reason: getAttentionReason(company) }))
+      .filter((item) => item.reason)
+      .slice(0, 5),
+    [companies],
+  )
+
   return (
-    <div className="fade-in">
-      <div className="flex items-center justify-between mb-8">
+    <div className="fade-in space-y-6">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h1 className="text-xl font-semibold text-[var(--text)]">Billing</h1>
-          <p className="text-sm text-[var(--text-2)] mt-0.5">Plan and payment status across companies</p>
-          {error ? <p className="mt-2 text-sm text-[var(--red)]">{error}</p> : null}
+          <p className="mt-0.5 text-sm text-[var(--text-2)]">Plan, payment, and seat capacity across companies.</p>
+          <p className="mt-2 text-xs text-[var(--text-3)]">
+            {lastSync ? `Last sync ${lastSync.toLocaleTimeString()}` : 'Not synced yet'}
+          </p>
         </div>
-        <Link href="/companies" className="px-4 py-2 bg-[var(--green)] hover:bg-[var(--green-dim)] text-white text-sm font-semibold rounded-lg transition-colors">
-          Manage companies
-        </Link>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="secondary" onClick={load} disabled={loading} aria-label="Refresh billing" title="Refresh billing">
+            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+          </Button>
+          <Link href="/companies" className="inline-flex items-center justify-center gap-2 rounded-lg bg-[var(--green)] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[var(--green-dim)]">
+            Manage companies
+          </Link>
+        </div>
       </div>
 
-      <div className="grid grid-cols-4 gap-4 mb-8">
+      {error ? (
+        <div className="rounded-xl border border-[#e05a5a25] bg-[#e05a5a12] px-4 py-3 text-sm text-[var(--red)]">
+          {error}
+        </div>
+      ) : null}
+
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {loading ? (
           <>
             <SkeletonCard />
@@ -106,15 +165,48 @@ export default function BillingPage() {
         )}
       </div>
 
-      <div className="bg-[var(--card)] border border-[var(--border)] rounded-xl overflow-hidden">
+      {!loading && attentionCompanies.length > 0 ? (
+        <section className="rounded-xl border border-[#d98f2e40] bg-[var(--card)] p-4">
+          <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="text-sm font-semibold text-[var(--text)]">Needs attention</h2>
+              <p className="text-xs text-[var(--text-3)]">Payment, lifecycle, and seat-limit risks.</p>
+            </div>
+            <Link href="/companies" className="inline-flex items-center gap-1 text-xs font-medium text-[var(--green)] hover:underline">
+              Open companies <ArrowUpRight className="h-3.5 w-3.5" />
+            </Link>
+          </div>
+          <div className="grid gap-2 md:grid-cols-2">
+            {attentionCompanies.map(({ company, reason }) => (
+              <Link
+                key={company.id}
+                href={`/companies?open=${company.id}`}
+                className="rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 transition-colors hover:border-[var(--amber)]"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-[var(--text)]">{company.name}</p>
+                    <p className="text-xs text-[var(--text-3)]">{reason}</p>
+                  </div>
+                  <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold capitalize ${PLAN_COLOR[company.plan || 'free']}`}>
+                    {company.plan || 'free'}
+                  </span>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
+      <section className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--card)]">
         <div className="px-5 py-4 border-b border-[var(--border)] flex items-center justify-between">
           <div>
             <h2 className="text-sm font-semibold text-[var(--text)]">Company billing states</h2>
-            <p className="text-xs text-[var(--text-3)] mt-0.5">Update plans and lifecycle status from Companies.</p>
+            <p className="text-xs text-[var(--text-3)] mt-0.5">Change plans and lifecycle status with owner-level controls.</p>
           </div>
           <Link href="/companies" className="text-xs text-[var(--green)] hover:underline">Edit plans</Link>
         </div>
-        <div className="grid px-5 py-3 bg-[var(--surface)] border-b border-[var(--border)] text-xs font-medium text-[var(--text-3)] uppercase tracking-wider"
+        <div className="hidden px-5 py-3 bg-[var(--surface)] border-b border-[var(--border)] text-xs font-medium text-[var(--text-3)] uppercase tracking-wider md:grid"
              style={{ gridTemplateColumns: '1fr 120px 120px 140px 130px 80px' }}>
           <div>Company</div><div>Plan</div><div>Status</div><div>Subscription</div><div>Seats</div><div></div>
         </div>
@@ -133,12 +225,18 @@ export default function BillingPage() {
           />
         ) : (
           <div className="divide-y divide-[var(--border)]">
-            {companies.map(company => (
-              <div key={company.id} className="grid items-center px-5 py-3.5 hover:bg-[var(--surface)] transition-colors"
-                   style={{ gridTemplateColumns: '1fr 120px 120px 140px 130px 80px' }}>
+            {companies.map(company => {
+              const seats = getSeatUsage(company)
+              const attentionReason = getAttentionReason(company)
+              return (
+              <div key={company.id} className="flex flex-col gap-3 px-5 py-3.5 transition-colors hover:bg-[var(--surface)] md:grid md:items-center"
+                   style={{ gridTemplateColumns: 'minmax(0,1fr) 120px 120px 140px 130px 80px' }}>
                 <div>
                   <p className="text-sm font-medium text-[var(--text)]">{company.name}</p>
                   <p className="text-xs text-[var(--text-3)]">{company.industry || 'No industry'}</p>
+                  {attentionReason ? (
+                    <p className="mt-1 text-xs text-[var(--amber)]">{attentionReason}</p>
+                  ) : null}
                 </div>
                 <div>
                   <select
@@ -162,7 +260,9 @@ export default function BillingPage() {
                 </div>
                 <div className="text-sm text-[var(--text-2)]">{company.subscriptionStatus || 'none'}</div>
                 <div>
-                  <p className="text-sm text-[var(--text-2)]">{formatSeatUsage(company)}</p>
+                  <p className={`text-sm ${seats.atLimit ? 'font-semibold text-[var(--red)]' : seats.nearLimit ? 'font-semibold text-[var(--amber)]' : 'text-[var(--text-2)]'}`}>
+                    {formatSeatUsage(company)}
+                  </p>
                   {(company.pendingInviteCount ?? 0) > 0 ? (
                     <p className="text-xs text-[var(--text-3)]">{company.pendingInviteCount} pending</p>
                   ) : null}
@@ -171,10 +271,10 @@ export default function BillingPage() {
                   Open
                 </Link>
               </div>
-            ))}
+            )})}
           </div>
         )}
-      </div>
+      </section>
     </div>
   )
 }

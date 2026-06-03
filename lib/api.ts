@@ -28,7 +28,7 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
   })
   if (!res.ok) {
     const err = await res.json().catch(() => ({ message: `HTTP ${res.status}` }))
-    throw new Error(err.message ?? `HTTP ${res.status}`)
+    throw new Error(err.message ?? err.error ?? `HTTP ${res.status}`)
   }
   const json = await res.json()
   // Backend wraps responses in { data } format
