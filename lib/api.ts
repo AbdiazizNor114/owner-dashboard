@@ -84,7 +84,12 @@ export const healthApi = {
     if (!res.ok) {
       throw new Error(`HTTP ${res.status}`)
     }
-    return res.json() as Promise<{ status: string; uptime: number; version?: string }>
+    return res.json() as Promise<{
+      status: string
+      uptime: number
+      version?: string
+      emailDeliveryConfigured?: boolean
+    }>
   },
 }
 

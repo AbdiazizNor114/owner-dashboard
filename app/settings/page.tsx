@@ -20,6 +20,7 @@ type HealthState = {
   message: string
   checkedAt: Date | null
   uptime?: number
+  emailDeliveryConfigured?: boolean
 }
 
 const controlCards = [
@@ -107,6 +108,7 @@ export default function SettingsPage() {
           : `API returned ${result.status}.`,
         checkedAt: new Date(),
         uptime: result.uptime,
+        emailDeliveryConfigured: result.emailDeliveryConfigured,
       })
     } catch (error) {
       setHealth({
@@ -197,7 +199,7 @@ export default function SettingsPage() {
                 </p>
                 <p className="mt-1 text-sm text-[var(--text-2)]">{health.message}</p>
               </div>
-              <div className="grid grid-cols-2 gap-3 text-right text-xs sm:min-w-52">
+              <div className="grid grid-cols-3 gap-3 text-right text-xs sm:min-w-72">
                 <div>
                   <p className="text-[var(--text-3)]">Checked</p>
                   <p className="font-medium text-[var(--text)]">{formatCheckedAt(health.checkedAt)}</p>
@@ -205,6 +207,12 @@ export default function SettingsPage() {
                 <div>
                   <p className="text-[var(--text-3)]">Uptime</p>
                   <p className="font-medium text-[var(--text)]">{formatUptime(health.uptime)}</p>
+                </div>
+                <div>
+                  <p className="text-[var(--text-3)]">Email</p>
+                  <p className="font-medium text-[var(--text)]">
+                    {health.emailDeliveryConfigured === undefined ? 'Unknown' : health.emailDeliveryConfigured ? 'Ready' : 'Fallback'}
+                  </p>
                 </div>
               </div>
             </div>
